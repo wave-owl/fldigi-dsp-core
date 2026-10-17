@@ -32,7 +32,8 @@ needs and refuses to build when the submodule is not the pinned version (see
 The scope follows the shared-DSP table of wave-owl's umbrella change
 `add-fldigi-native-modes` (design.md, "fldigi-dsp-core: scope sketch", requirement R-920).
 Version 0.1.0 implemented what the first consumer, `fldigi-olivia-core`, needs; 0.2.0 adds
-what `fldigi-ifk-core` (THOR and DominoEX) needs, 0.3.0 the rate converter of
+what `fldigi-ifk-core` (THOR and DominoEX) needs, 0.4.0 the FIR with own taps, `Irun` and `cmac`
+of `fldigi-throb-core`, 0.3.0 the rate converter of
 `fldigi-mfsk-core` (MFSK11/22 at the station's 8 kHz). The remaining rows are reserved and get their
 own golden tests when the first family that needs them lands (wave-owl D-926: the first family
 change that needs a primitive adds it here).
@@ -44,9 +45,11 @@ change that needs a primitive adds it here).
 | Gray code (`fdsp_gray_code`, `fdsp_binary_code`) | `src/include/jalocha/pj_gray.h:11-21` | **0.1.0** | Olivia/Contestia |
 | Third-order IIR integrator (`fdsp_lowpass3_*`) | `src/include/jalocha/pj_lowpass3.h:13-41` | **0.1.0** | Olivia/Contestia |
 | Generic complex FFT (`fdsp_gfft_*`, John Green's algorithm) | `src/include/gfft.h:142-2290, 3241-3345` | **0.2.0** (complex only) | THOR/DominoEX via fftfilt; later MT63 (FFT only), FSQ/IFKP |
-| Overlap-add FFT filter (`fdsp_fftfilt_*`: low/high/band-pass, band reject) | `src/filters/fftfilt.cxx:55-237` | **0.2.0** (raised-cosine and RTTY shapes planned) | THOR/DominoEX; later NAVTEX, Throb |
-| FIR filter and Hilbert (`fdsp_fir_*`, `C_FIR_filter`) | `src/filters/filters.cxx:46-187` | **0.2.0** | THOR/DominoEX; later MFSK, Throb, FSQ/IFKP |
-| Moving average (`fdsp_movavg_*`, `Cmovavg`) | `src/filters/filters.cxx:261-307` | **0.2.0** | THOR/DominoEX; later MFSK, Hellschreiber, Throb, FSQ/IFKP |
+| Overlap-add FFT filter (`fdsp_fftfilt_*`: low/high/band-pass, band reject) | `src/filters/fftfilt.cxx:55-237` | **0.2.0** (raised-cosine and RTTY shapes planned) | THOR/DominoEX, Throb; later NAVTEX |
+| FIR filter and Hilbert (`fdsp_fir_*`, `C_FIR_filter`) | `src/filters/filters.cxx:46-187` | **0.2.0** | THOR/DominoEX, Throb; later FSQ/IFKP |
+| FIR with own taps, I-branch `Irun` (`fdsp_fir_init`, `fdsp_fir_irun`) | `src/filters/filters.cxx:58-84, 193-217` | **0.4.0** | Throb (sync filter) |
+| Circular complex multiply-accumulate (`fdsp_cmac`) | `src/include/complex.h:33-41` | **0.4.0** | Throb (tone correlation) |
+| Moving average (`fdsp_movavg_*`, `Cmovavg`) | `src/filters/filters.cxx:261-307` | **0.2.0** | THOR/DominoEX, Throb; later MFSK, Hellschreiber, FSQ/IFKP |
 | Sliding DFT (`fdsp_sfft_*`) | `src/filters/filters.cxx:402-465` | **0.2.0** | THOR/DominoEX; later MFSK |
 | Convolutional encoder and soft Viterbi decoder, K <= 15 (`fdsp_encoder_*`, `fdsp_viterbi_*`) | `src/filters/viterbi.cxx:36-257` | **0.2.0** | THOR (K=7, K=15), DominoEX MultiPSK FEC; later MFSK |
 | Block interleaver (`fdsp_interleave_*`) | `src/mfsk/interleave.cxx:34-100` | **0.2.0** | THOR, DominoEX FEC; later MFSK |
@@ -74,7 +77,7 @@ All declarations are in `include/fldigi_dsp.h`.
 
 | Function | fldigi | Description |
 |---|---|---|
-| `const char *fdsp_version(void)` | – | `"fldigi-dsp-core 0.3.0 contract=dsp-c1 abi=1"`. `FDSP_VERSION_STRING` holds `"0.3.0"`. |
+| `const char *fdsp_version(void)` | – | `"fldigi-dsp-core 0.4.0 contract=dsp-c1 abi=1"`. `FDSP_VERSION_STRING` holds `"0.4.0"`. |
 | `int fdsp_r2fft_init(fdsp_r2fft *f, size_t n)` | `r2FFT::Preset`, `pj_fft.h:92-125` | Tables for an `n`-point FFT, `n` a power of two `>= 4`. Twiddles cover the full circle, `twiddle[k] = e^{+j 2 pi k / n}` (first quarter from `cos`/`sin`, the rest by rotation, as fldigi). Returns 0, or -1 (bad size, out of memory; the struct is then zeroed). |
 | `void fdsp_r2fft_free(fdsp_r2fft *f)` | `r2FFT::Free` | Releases the tables; safe to call twice. |
 | `void fdsp_r2fft_process(const fdsp_r2fft *f, fdsp_cmpx *x)` | `r2FFT::Process`, `pj_fft.h:249-250` | In-place forward FFT `X[k] = sum x[n] e^{-j 2 pi k n / N}`, bit reversal first, radix-2 butterflies with the conjugated twiddle (`pj_fft.h:210-224, 277-297`). Not normalised. |
@@ -88,6 +91,8 @@ All declarations are in `include/fldigi_dsp.h`.
 | `fdsp_gfft_init/free/forward/inverse` | `g_fft<double>`, `gfft.h` | Complex FFT of 16 .. 2^28 points, in place; the inverse is scaled by 1/N (as fldigi's). Tables in `init`. |
 | `fdsp_fftfilt_init(f, f1, f2, len)`, `_create`, `_run(f, in, &out)`, `_free` | `fftfilt.cxx:55-237` | Overlap-add FFT filter (`len` FFT points, `len/2` taps of Blackman-windowed sinc, unit peak gain). `run` takes one sample and returns `len/2` when a block of output is ready. |
 | `fdsp_fir_init_hilbert/_lowpass/_bandpass`, `fdsp_fir_run`, `fdsp_fir_bp_taps`, `fdsp_fir_free` | `filters.cxx:46-187` | `C_FIR_filter` with optional decimation; the output lags one sample as in fldigi (dot product over the previous `len` samples). |
+| `fdsp_fir_init(f, len, dec, itaps, qtaps)`, `fdsp_fir_irun(f, in, &out)` | `filters.cxx:58-84, 193-217` | `C_FIR_filter::init` with the caller's taps (`qtaps` NULL: zero Q branch) and `Irun`, the I branch alone, same lag and buffer handling as `run` (0.4.0). |
+| `fdsp_cmpx fdsp_cmac(a, b, ptr, len)` | `complex.h:33-41` | `sum a[i] * b[(ptr + i) % len]`, `ptr` reduced modulo `len` first; complex products never fused (0.4.0). |
 | `fdsp_movavg_init/reset/run` | `filters.cxx:261-307` | `Cmovavg`; the first value fills the window. |
 | `fdsp_sfft_init/reset/run/free` | `filters.cxx:402-465` | Sliding DFT over `len` samples for bins `first .. last-1`, damping `K1 = 0.99999999999L`; `run` writes bin `k` to `result[k * stride]`. |
 | `fdsp_encoder_init/encode/free`, `fdsp_viterbi_init/reset/set_traceback/set_chunksize/decode/free` | `viterbi.cxx:36-257` | Rate-1/2 code, K 3..15, soft symbols 0..255 (128 = erasure). `decode` returns the bits of a finished chunk or -1. Path metrics are renormalised on every call (fldigi skips it on traceback calls and overflows after ~8.4 M pairs with chunk size 1); decisions are identical. |
@@ -152,7 +157,7 @@ wave-owl requirement R-920.3 (invariant INV-920): a family core checks the `dsp/
 before it compiles anything. Each family core carries a `dsp.lock`:
 
 ```
-version=0.3.0
+version=0.4.0
 commit=<git commit of this repository>
 checksum=<content checksum of the linked files>
 files=include/fldigi_dsp.h src/fdsp_jalocha.c src/fdsp_gfft.c src/fdsp_filters.c src/fdsp_fec.c src/fdsp_resample.c

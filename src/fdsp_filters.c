@@ -311,6 +311,23 @@ static int fir_init(fdsp_fir *f, int len, int dec, const double *itaps, const do
     return 0;
 }
 
+int fdsp_fir_init(fdsp_fir *f, int len, int dec, const double *itaps, const double *qtaps)
+{
+    /* init, filters/filters.cxx:58-84 with the caller's taps; a missing Q branch is zero */
+    int rc;
+    double *zero;
+    if (!itaps || len < 1 || len >= FDSP_FIR_BUFLEN)
+        return -1;
+    if (qtaps)
+        return fir_init(f, len, dec, itaps, qtaps);
+    zero = (double *)calloc((size_t)len, sizeof(double));
+    if (!zero)
+        return -1;
+    rc = fir_init(f, len, dec, itaps, zero);
+    free(zero);
+    return rc;
+}
+
 int fdsp_fir_init_hilbert(fdsp_fir *f, int len, int dec)
 {
     /* init_hilbert, filters/filters.cxx:152-158 */
@@ -380,6 +397,44 @@ int fdsp_fir_run(fdsp_fir *f, fdsp_cmpx in, fdsp_cmpx *out)
         return 1;
     }
     return 0;
+}
+
+int fdsp_fir_irun(fdsp_fir *f, double in, double *out)
+{
+    /* Irun, filters/filters.cxx:193-217: the dot product covers the length samples before
+     * the new one, as run() does */
+    double *iptr = f->ibuffer + f->pointer;
+    f->pointer++;
+    f->counter++;
+    *iptr = in;
+    if (f->counter == f->decimateratio)
+        *out = fir_mac(iptr - f->length, f->ifilter, (unsigned int)f->length);
+    if (f->pointer == FDSP_FIR_BUFLEN) {
+        iptr = f->ibuffer + FDSP_FIR_BUFLEN - f->length;
+        memcpy(f->ibuffer, iptr, (size_t)f->length * sizeof(double));
+        f->pointer = f->length;
+    }
+    if (f->counter == f->decimateratio) {
+        f->counter = 0;
+        return 1;
+    }
+    return 0;
+}
+
+fdsp_cmpx fdsp_cmac(const fdsp_cmpx *a, const fdsp_cmpx *b, int ptr, int len)
+{
+    /* cmac, include/complex.h:33-41 */
+    fdsp_cmpx z, p;
+    int i;
+    z.re = z.im = 0.0;
+    ptr %= len;
+    for (i = 0; i < len; i++) {
+        p = cmul(a[i], b[ptr]);
+        z.re += p.re;
+        z.im += p.im;
+        ptr = (ptr + 1) % len;
+    }
+    return z;
 }
 
 /* ---------------------------------------------------------------------------------- */

@@ -34,11 +34,11 @@ extern "C" {
 /* Version of this library. Family cores pin it (dsp.lock) and refuse to build
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
-#define FDSP_VERSION_MINOR 3
+#define FDSP_VERSION_MINOR 4
 #define FDSP_VERSION_PATCH 0
-#define FDSP_VERSION_STRING "0.3.0"
+#define FDSP_VERSION_STRING "0.4.0"
 
-/* "fldigi-dsp-core 0.3.0 contract=dsp-c1 abi=1". Static string. */
+/* "fldigi-dsp-core 0.4.0 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
 
 /* ------------------------------------------------------------------------------------
@@ -189,6 +189,21 @@ int fdsp_fir_init_bandpass(fdsp_fir *f, int len, int dec, double f1, double f2);
 void fdsp_fir_free(fdsp_fir *f);
 /* run, filters/filters.cxx:168-187: returns 1 when *out holds a (decimated) output. */
 int fdsp_fir_run(fdsp_fir *f, fdsp_cmpx in, fdsp_cmpx *out);
+/* init with the caller's taps, filters/filters.cxx:58-84 (0.4.0): len taps for the I branch
+ * and the Q branch; qtaps NULL gives a Q branch of zeros (fldigi leaves it unset and only
+ * calls Irun on such a filter, e.g. Throb's sync filter, throb.cxx:231-232). Returns 0 or -1
+ * (len < 1 or >= FDSP_FIR_BUFLEN, dec < 1, itaps NULL, out of memory). */
+int fdsp_fir_init(fdsp_fir *f, int len, int dec, const double *itaps, const double *qtaps);
+/* Irun, filters/filters.cxx:193-217 (0.4.0): the I branch only; returns 1 when *out holds a
+ * (decimated) output. Shares the buffer and the counters with fdsp_fir_run. */
+int fdsp_fir_irun(fdsp_fir *f, double in, double *out);
+
+/* ------------------------------------------------------------------------------------
+ * cmac: circular complex multiply-accumulate (include/complex.h:33-41, 0.4.0):
+ * sum over i of a[i] * b[(ptr + i) % len], ptr taken modulo len first; the complex
+ * products are evaluated as std::complex does (four separate products, never fused).
+ * ------------------------------------------------------------------------------------ */
+fdsp_cmpx fdsp_cmac(const fdsp_cmpx *a, const fdsp_cmpx *b, int ptr, int len);
 
 /* ------------------------------------------------------------------------------------
  * Cmovavg: moving average (filters/filters.cxx:261-307). The first value fills the window.

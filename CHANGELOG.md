@@ -3,6 +3,18 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.4.0 - 2026-10-17
+
+The primitives `fldigi-throb-core` needs (wave-owl change `add-fldigi-throb-core`). Additive:
+the 0.3 API and its results are unchanged.
+
+- `fdsp_fir_init`: `C_FIR_filter::init` with the caller's taps (`filters.cxx:58-84`); a missing
+  Q branch is zero (Throb's sync filter, `throb.cxx:231-232`).
+- `fdsp_fir_irun`: `C_FIR_filter::Irun` (`filters.cxx:193-217`), the I branch alone.
+- `fdsp_cmac`: the circular complex multiply-accumulate of `complex.h:33-41` (Throb's tone
+  correlation), products evaluated as `std::complex` does.
+- Golden data from fldigi's own `filters.cxx` and `complex.h` (`firirun*.f64`, `cmac.f64`).
+
 ## 0.3.0 - 2026-10-17
 
 The rate converter for `fldigi-mfsk-core` (wave-owl change `add-fldigi-mfsk-core`). Additive:

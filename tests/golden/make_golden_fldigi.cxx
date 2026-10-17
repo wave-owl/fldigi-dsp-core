@@ -162,6 +162,53 @@ int main(int argc, char **argv)
         }
     }
 
+    // C_FIR_filter with own taps, I branch only (Irun, 0.4.0): Throb's sync filter, the
+    // semi pulse of 256 taps (THROB1) with decimation 1, and a full pulse of 64 taps
+    // (THROB4) with decimation 2; 9000 non-negative LCG samples (magnitudes).
+    {
+        for (int c = 0; c < 2; c++) {
+            int len = c == 0 ? 256 : 64, dec = c == 0 ? 1 : 2;
+            std::vector<double> taps(len), out;
+            for (int i = 0; i < len; i++)
+                taps[i] = 0.5 * (1 - cos(2 * M_PI * i / len)) + 0.001 * (c + 1) * i;
+            C_FIR_filter fir;
+            fir.init(len, dec, taps.data(), NULL);
+            lcg_state = (uint32_t)(320 + c);
+            for (int i = 0; i < 9000; i++) {
+                double o = 0.0, x = fabs(lcg_next());
+                if (fir.Irun(x, o))
+                    out.push_back(o);
+            }
+            snprintf(name, sizeof name, "firirun%d_taps.f64", c);
+            write_file(name, taps.data(), taps.size() * sizeof(double));
+            snprintf(name, sizeof name, "firirun%d_out.f64", c);
+            write_file(name, out.data(), out.size() * sizeof(double));
+        }
+    }
+
+    // cmac (complex.h:33-41, 0.4.0): circular correlation of two LCG vectors of length 256
+    // and 11 at every start pointer 0 .. len + 2.
+    {
+        std::vector<double> out;
+        const int lens[2] = {256, 11};
+        for (int c = 0; c < 2; c++) {
+            int len = lens[c];
+            std::vector<cmplx> a(len), b(len);
+            lcg_state = (uint32_t)(340 + c);
+            for (int i = 0; i < len; i++) {
+                double re = lcg_next(), im = lcg_next();
+                a[i] = cmplx(re, im);
+            }
+            for (int i = 0; i < len; i++) {
+                double re = lcg_next(), im = lcg_next();
+                b[i] = cmplx(re, im);
+            }
+            for (int p = 0; p < len + 3; p++)
+                put_c(out, cmac(a.data(), b.data(), p, len));
+        }
+        write_file("cmac.f64", out.data(), out.size() * sizeof(double));
+    }
+
     // Cmovavg: lengths 8 and 16, 500 values.
     {
         std::vector<double> out;

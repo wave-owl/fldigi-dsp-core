@@ -408,6 +408,80 @@ static void test_fir(void)
     }
 }
 
+static void test_fir_irun(void)
+{
+    int c, i;
+    size_t len, glen, pos;
+    char name[64];
+    for (c = 0; c < 2; c++) {
+        fdsp_fir f;
+        int flen = c == 0 ? 256 : 64, dec = c == 0 ? 1 : 2;
+        double *taps, *gold;
+        snprintf(name, sizeof name, "firirun%d_taps.f64", c);
+        taps = (double *)read_file(name, &len);
+        CHECK(len == (size_t)flen * sizeof(double), "fir irun taps %d", c);
+        CHECK(fdsp_fir_init(&f, flen, dec, taps, NULL) == 0, "fir irun init %d", c);
+        CHECK(f.qfilter[0] == 0.0 && f.qfilter[flen - 1] == 0.0, "fir irun zero Q %d", c);
+        snprintf(name, sizeof name, "firirun%d_out.f64", c);
+        gold = (double *)read_file(name, &glen);
+        lcg_state = (uint32_t)(320 + c);
+        pos = 0;
+        for (i = 0; i < 9000; i++) {
+            double out = 0.0, x = fabs(lcg_next());
+            if (fdsp_fir_irun(&f, x, &out)) {
+                if (pos >= glen / sizeof(double) || gold[pos] != out) {
+                    CHECK(0, "fir irun %d output %zu", c, pos);
+                    break;
+                }
+                pos++;
+            }
+        }
+        CHECK(pos == glen / sizeof(double), "fir irun %d output count", c);
+        free(taps);
+        free(gold);
+        fdsp_fir_free(&f);
+    }
+    {
+        fdsp_fir f;
+        double t[3] = {1, 2, 3};
+        CHECK(fdsp_fir_init(&f, 3, 1, NULL, NULL) == -1, "fir init without taps");
+        CHECK(fdsp_fir_init(&f, 0, 1, t, NULL) == -1, "fir init length 0");
+    }
+}
+
+static void test_cmac(void)
+{
+    const int lens[2] = {256, 11};
+    size_t glen, pos = 0;
+    double *gold = (double *)read_file("cmac.f64", &glen);
+    int c, i, p;
+    for (c = 0; c < 2; c++) {
+        int len = lens[c];
+        fdsp_cmpx *a = (fdsp_cmpx *)malloc((size_t)len * sizeof *a);
+        fdsp_cmpx *b = (fdsp_cmpx *)malloc((size_t)len * sizeof *b);
+        lcg_state = (uint32_t)(340 + c);
+        for (i = 0; i < len; i++) {
+            a[i].re = lcg_next();
+            a[i].im = lcg_next();
+        }
+        for (i = 0; i < len; i++) {
+            b[i].re = lcg_next();
+            b[i].im = lcg_next();
+        }
+        for (p = 0; p < len + 3; p++, pos += 2) {
+            fdsp_cmpx z = fdsp_cmac(a, b, p, len);
+            if (pos + 1 >= glen / sizeof(double) || gold[pos] != z.re || gold[pos + 1] != z.im) {
+                CHECK(0, "cmac len %d ptr %d", len, p);
+                break;
+            }
+        }
+        free(a);
+        free(b);
+    }
+    CHECK(pos == glen / sizeof(double), "cmac count");
+    free(gold);
+}
+
 static void test_movavg(void)
 {
     size_t len, pos = 0;
@@ -706,6 +780,8 @@ int main(int argc, char **argv)
     test_gfft();
     test_fftfilt();
     test_fir();
+    test_fir_irun();
+    test_cmac();
     test_movavg();
     test_sfft();
     test_conv();
