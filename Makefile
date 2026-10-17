@@ -3,6 +3,7 @@
 #   make test         build and run the golden tests
 #   make sanitize     the tests under AddressSanitizer + UndefinedBehaviorSanitizer
 #   make golden       regenerate tests/golden from fldigi 4.2.13 (FLDIGI=/path/to/fldigi)
+#                     (Jalocha headers, and fldigi's own filter/FEC/varicode sources)
 #   make checksum     print the content checksum that family cores pin in dsp.lock
 #
 # Family cores (fldigi-olivia-core, ...) consume this repository as the submodule dsp/
@@ -15,7 +16,7 @@ CFLAGS ?= -O3
 CORE_FLAGS = -std=c99 -Wall -Wextra -Werror -pedantic -ffp-contract=off -fPIC -Iinclude
 LDLIBS = -lm
 
-DSP_SOURCES = src/fdsp_jalocha.c
+DSP_SOURCES = src/fdsp_jalocha.c src/fdsp_gfft.c src/fdsp_filters.c src/fdsp_fec.c
 DSP_HEADERS = include/fldigi_dsp.h
 OBJ = $(patsubst src/%.c,$(BUILD)/%.o,$(DSP_SOURCES))
 
@@ -49,6 +50,12 @@ golden:
 	$(CXX) -std=c++11 -O2 -ffp-contract=off -w -I$(FLDIGI)/src/include/jalocha \
 		tests/golden/make_golden.cxx -o $(BUILD)/make_golden
 	$(BUILD)/make_golden tests/golden
+	$(CXX) -std=c++11 -O2 -ffp-contract=off -w -Itests/golden/stub -I$(FLDIGI)/src/include \
+		tests/golden/make_golden_fldigi.cxx $(FLDIGI)/src/filters/fftfilt.cxx \
+		$(FLDIGI)/src/filters/filters.cxx $(FLDIGI)/src/filters/viterbi.cxx \
+		$(FLDIGI)/src/mfsk/interleave.cxx $(FLDIGI)/src/mfsk/mfskvaricode.cxx \
+		$(FLDIGI)/src/misc/misc.cxx -o $(BUILD)/make_golden_fldigi
+	$(BUILD)/make_golden_fldigi tests/golden
 
 # Content checksum of the sources a family core links (sorted path list, then each
 # file's bytes): the value recorded in a family core's dsp.lock.

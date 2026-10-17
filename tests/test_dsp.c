@@ -253,6 +253,368 @@ static void test_lowpass3(void)
     free(g);
 }
 
+/* ------------------------------------------------------------------------------------
+ * 0.2.0 primitives against make_golden_fldigi.cxx (fldigi's own sources).
+ * Tables computed with libm (cosine table, filter shapes, FIR taps, sliding-DFT
+ * rotations) are compared within a few ulp, then the golden tables are injected so the
+ * processing itself is compared bit for bit on every platform.
+ * ------------------------------------------------------------------------------------ */
+
+static int close_doubles(const double *a, const double *b, size_t n, double tol)
+{
+    size_t i;
+    for (i = 0; i < n; i++) {
+        double d = a[i] - b[i];
+        if (d > tol || d < -tol)
+            return 0;
+    }
+    return 1;
+}
+
+static void test_gfft(void)
+{
+    size_t n, i, len;
+    char name[64];
+    fdsp_gfft bad;
+    CHECK(fdsp_gfft_init(&bad, 8) < 0, "gfft size 8 accepted");
+    CHECK(fdsp_gfft_init(&bad, 100) < 0, "gfft size 100 accepted");
+    for (n = 16; n <= 8192; n *= 2) {
+        fdsp_gfft fft;
+        fdsp_cmpx *buf = (fdsp_cmpx *)malloc(n * sizeof *buf);
+        double *gold, *utbl;
+        CHECK(fdsp_gfft_init(&fft, n) == 0, "gfft init %zu", n);
+        snprintf(name, sizeof name, "gfft%zu_utbl.f64", n);
+        utbl = (double *)read_file(name, &len);
+        CHECK(len == (n / 4 + 1) * sizeof(double) &&
+              close_doubles(utbl, fft.utbl, n / 4 + 1, 2.3e-16), "gfft utbl %zu", n);
+        memcpy(fft.utbl, utbl, len);
+        lcg_state = (uint32_t)(5000 + n);
+        for (i = 0; i < n; i++) {
+            buf[i].re = lcg_next();
+            buf[i].im = lcg_next();
+        }
+        snprintf(name, sizeof name, "gfft%zu.f64", n);
+        gold = (double *)read_file(name, &len);
+        fdsp_gfft_forward(&fft, buf);
+        CHECK(same_doubles(gold, (const double *)buf, 2 * n), "gfft forward %zu", n);
+        fdsp_gfft_inverse(&fft, buf);
+        CHECK(same_doubles(gold + 2 * n, (const double *)buf, 2 * n), "gfft inverse %zu", n);
+        free(gold);
+        free(utbl);
+        free(buf);
+        fdsp_gfft_free(&fft);
+        fdsp_gfft_free(&fft);
+    }
+}
+
+static void test_fftfilt(void)
+{
+    static const double cases[3][2] = {
+        {(2000.0 - 0.5 * 2.0 * 281.25) / 8000.0, (2000.0 + 0.5 * 2.0 * 281.25) / 8000.0},
+        {(1500.0 - 0.5 * 2.0 * 193.798828125) / 11025.0,
+         (1500.0 + 0.5 * 2.0 * 193.798828125) / 11025.0},
+        {0.0, 0.1},
+    };
+    int c, i, k;
+    size_t len, pos;
+    char name[64];
+    double *utbl = (double *)read_file("gfft1024_utbl.f64", &len);
+    for (c = 0; c < 3; c++) {
+        fdsp_fftfilt f;
+        double *shape, *gold;
+        size_t glen;
+        CHECK(fdsp_fftfilt_init(&f, cases[c][0], cases[c][1], 1024) == 0, "fftfilt init");
+        snprintf(name, sizeof name, "fftfilt%d_shape.f64", c);
+        shape = (double *)read_file(name, &len);
+        CHECK(len == 2048 * sizeof(double) &&
+              close_doubles(shape, (const double *)f.filter, 2048, 1e-14), "fftfilt shape %d", c);
+        memcpy(f.filter, shape, len);
+        memcpy(f.fft.utbl, utbl, 257 * sizeof(double));
+        snprintf(name, sizeof name, "fftfilt%d_out.f64", c);
+        gold = (double *)read_file(name, &glen);
+        lcg_state = (uint32_t)(77 + c);
+        pos = 0;
+        for (i = 0; i < 6000; i++) {
+            const fdsp_cmpx *zp = NULL;
+            fdsp_cmpx in;
+            int n;
+            in.re = lcg_next();
+            in.im = lcg_next();
+            n = fdsp_fftfilt_run(&f, in, &zp);
+            for (k = 0; k < n; k++, pos += 2) {
+                if (pos + 1 >= glen / sizeof(double) ||
+                    gold[pos] != zp[k].re || gold[pos + 1] != zp[k].im) {
+                    CHECK(0, "fftfilt %d sample %zu", c, pos / 2);
+                    i = 6000;
+                    break;
+                }
+            }
+        }
+        CHECK(pos == glen / sizeof(double), "fftfilt %d output count %zu", c, pos);
+        free(shape);
+        free(gold);
+        fdsp_fftfilt_free(&f);
+    }
+    free(utbl);
+}
+
+static void test_fir(void)
+{
+    int c, i;
+    size_t len, glen, pos;
+    char name[64];
+    for (c = 0; c < 3; c++) {
+        fdsp_fir f;
+        int flen = c == 0 ? 37 : c == 1 ? 127 : 65, rc;
+        double *taps, *gold;
+        if (c == 0)
+            rc = fdsp_fir_init_hilbert(&f, flen, 1);
+        else if (c == 1)
+            rc = fdsp_fir_init_lowpass(&f, flen, 1, 0.0625);
+        else
+            rc = fdsp_fir_init_bandpass(&f, flen, 2, 0.1, 0.2);
+        CHECK(rc == 0, "fir init %d", c);
+        snprintf(name, sizeof name, "fir%d_taps.f64", c);
+        taps = (double *)read_file(name, &len);
+        CHECK(close_doubles(taps, f.ifilter, (size_t)flen, 1e-16) &&
+              close_doubles(taps + flen, f.qfilter, (size_t)flen, 1e-16), "fir taps %d", c);
+        memcpy(f.ifilter, taps, (size_t)flen * sizeof(double));
+        memcpy(f.qfilter, taps + flen, (size_t)flen * sizeof(double));
+        snprintf(name, sizeof name, "fir%d_out.f64", c);
+        gold = (double *)read_file(name, &glen);
+        lcg_state = (uint32_t)(300 + c);
+        pos = 0;
+        for (i = 0; i < 9000; i++) {
+            fdsp_cmpx in, out;
+            in.re = lcg_next();
+            in.im = lcg_next();
+            if (fdsp_fir_run(&f, in, &out)) {
+                if (gold[pos] != out.re || gold[pos + 1] != out.im) {
+                    CHECK(0, "fir %d output %zu", c, pos / 2);
+                    break;
+                }
+                pos += 2;
+            }
+        }
+        CHECK(pos == glen / sizeof(double), "fir %d output count", c);
+        free(taps);
+        free(gold);
+        fdsp_fir_free(&f);
+    }
+}
+
+static void test_movavg(void)
+{
+    size_t len, pos = 0;
+    int l, i;
+    double *gold = (double *)read_file("movavg.f64", &len);
+    for (l = 8; l <= 16; l += 8) {
+        fdsp_movavg m;
+        CHECK(fdsp_movavg_init(&m, l) == 0, "movavg init");
+        lcg_state = (uint32_t)(400 + l);
+        for (i = 0; i < 500; i++)
+            CHECK(fdsp_movavg_run(&m, 1000.0 * lcg_next()) == gold[pos++], "movavg %d/%d", l, i);
+        fdsp_movavg_reset(&m);
+        CHECK(fdsp_movavg_run(&m, 3.25) == gold[pos++], "movavg reset");
+        CHECK(fdsp_movavg_run(&m, -1.5) == gold[pos++], "movavg after reset");
+    }
+    CHECK(pos == len / sizeof(double), "movavg count");
+    free(gold);
+}
+
+static void test_sfft(void)
+{
+    static const int cases[3][3] = {{1024, 184, 248}, {512, 91, 121}, {64, 3, 20}};
+    int c, i, k;
+    size_t len, glen, pos;
+    char name[64];
+    for (c = 0; c < 3; c++) {
+        int n = cases[c][0], first = cases[c][1], last = cases[c][2];
+        fdsp_sfft s;
+        fdsp_cmpx *res = (fdsp_cmpx *)calloc((size_t)(3 * (last - first)), sizeof *res);
+        double *vr, *gold;
+        CHECK(fdsp_sfft_init(&s, n, first, last) == 0, "sfft init");
+        snprintf(name, sizeof name, "sfft%d_vrot.f64", c);
+        vr = (double *)read_file(name, &len);
+        CHECK(len == (size_t)(2 * n + 1) * sizeof(double) &&
+              close_doubles(vr, (const double *)s.vrot, (size_t)(2 * n), 2.3e-16) &&
+              close_doubles(vr + 2 * n, &s.k2, 1, 1e-15), "sfft rotations %d", c);
+        memcpy(s.vrot, vr, (size_t)(2 * n) * sizeof(double));
+        s.k2 = vr[2 * n];
+        snprintf(name, sizeof name, "sfft%d.f64", c);
+        gold = (double *)read_file(name, &glen);
+        lcg_state = (uint32_t)(500 + c);
+        pos = 0;
+        for (i = 0; i < 3000; i++) {
+            fdsp_cmpx in;
+            in.re = lcg_next();
+            in.im = lcg_next();
+            fdsp_sfft_run(&s, in, res + 1, 3);
+            if (i % 7 == 0 || i > 2990) {
+                for (k = 0; k < last - first; k++, pos += 2) {
+                    if (gold[pos] != res[1 + 3 * k].re || gold[pos + 1] != res[1 + 3 * k].im) {
+                        CHECK(0, "sfft %d step %d bin %d", c, i, k);
+                        i = 3000;
+                        break;
+                    }
+                }
+            }
+        }
+        CHECK(pos == glen / sizeof(double), "sfft %d count", c);
+        fdsp_sfft_reset(&s);
+        CHECK(s.count == 0 && s.bins[first].re == 0.0, "sfft reset");
+        free(vr);
+        free(gold);
+        free(res);
+        fdsp_sfft_free(&s);
+    }
+}
+
+static void test_conv(void)
+{
+    static const int ks[2][3] = {{7, 0x6d, 0x4f}, {15, 044735, 063057}};
+    int c, i;
+    size_t len;
+    char name[64];
+    fdsp_viterbi bad;
+    CHECK(fdsp_viterbi_init(&bad, 16, 1, 1) < 0, "viterbi k 16 accepted");
+    for (c = 0; c < 2; c++) {
+        fdsp_encoder enc;
+        fdsp_viterbi v1, v8;
+        int32_t *codes, *dec1, *met1, *dec8;
+        unsigned char *sym;
+        int k = ks[c][0];
+        CHECK(fdsp_encoder_init(&enc, k, ks[c][1], ks[c][2]) == 0, "encoder init");
+        snprintf(name, sizeof name, "conv%d_enc.i32", k);
+        codes = (int32_t *)read_file(name, &len);
+        lcg_state = (uint32_t)(600 + c);
+        for (i = 0; i < 4000; i++) {
+            int bit = lcg_next() > 0.0;
+            CHECK(fdsp_encoder_encode(&enc, bit) == codes[i], "encode k=%d %d", k, i);
+            lcg_next();
+            lcg_next();
+        }
+        snprintf(name, sizeof name, "conv%d_sym.u8", k);
+        sym = (unsigned char *)read_file(name, &len);
+        snprintf(name, sizeof name, "conv%d_dec1.i32", k);
+        dec1 = (int32_t *)read_file(name, &len);
+        snprintf(name, sizeof name, "conv%d_met1.i32", k);
+        met1 = (int32_t *)read_file(name, &len);
+        snprintf(name, sizeof name, "conv%d_dec8.i32", k);
+        dec8 = (int32_t *)read_file(name, &len);
+        CHECK(fdsp_viterbi_init(&v1, k, ks[c][1], ks[c][2]) == 0, "viterbi init");
+        CHECK(fdsp_viterbi_set_traceback(&v1, c == 0 ? 45 : 180) == 0, "traceback");
+        CHECK(fdsp_viterbi_set_chunksize(&v1, 1) == 0, "chunksize");
+        CHECK(fdsp_viterbi_init(&v8, k, ks[c][1], ks[c][2]) == 0, "viterbi init 8");
+        for (i = 0; i < 4000; i++) {
+            int met = 0, r = fdsp_viterbi_decode(&v1, sym + 2 * i, &met);
+            CHECK(r == dec1[i] && met == met1[i], "viterbi k=%d chunk 1 pair %d", k, i);
+            met = 0;
+            r = fdsp_viterbi_decode(&v8, sym + 2 * i, &met);
+            CHECK(r == dec8[2 * i] && met == dec8[2 * i + 1], "viterbi k=%d chunk 8 pair %d", k, i);
+        }
+        free(codes);
+        free(sym);
+        free(dec1);
+        free(met1);
+        free(dec8);
+        fdsp_encoder_free(&enc);
+        fdsp_viterbi_free(&v1);
+        fdsp_viterbi_free(&v8);
+    }
+}
+
+static void test_viterbi_long_run(void)
+{
+    /* Independent of fldigi: 9 million clean pairs (past the int overflow point of
+     * fldigi's metrics with chunk size 1) still decode, and UBSan stays quiet. */
+    fdsp_encoder enc;
+    fdsp_viterbi v;
+    long i, errors = 0;
+    int delay = 45, hist[64] = {0};
+    fdsp_encoder_init(&enc, 7, 0x6d, 0x4f);
+    fdsp_viterbi_init(&v, 7, 0x6d, 0x4f);
+    fdsp_viterbi_set_traceback(&v, delay);
+    fdsp_viterbi_set_chunksize(&v, 1);
+    lcg_state = 4242;
+    for (i = 0; i < 9000000L; i++) {
+        int bit = (lcg_state >> 13) & 1, d, r;
+        unsigned char s[2];
+        lcg_next();
+        d = fdsp_encoder_encode(&enc, bit);
+        s[0] = (d & 1) ? 255 : 0;
+        s[1] = (d & 2) ? 255 : 0;
+        r = fdsp_viterbi_decode(&v, s, NULL);
+        if (i > delay + 1 && r != hist[(i - delay) & 63])
+            errors++;
+        hist[i & 63] = bit;
+    }
+    CHECK(errors == 0, "long run: %ld bit errors", errors);
+    fdsp_encoder_free(&enc);
+    fdsp_viterbi_free(&v);
+}
+
+static void test_interleave(void)
+{
+    static const int cases[4][2] = {{4, 10}, {4, 50}, {4, 4}, {5, 6}};
+    size_t len, pos = 0;
+    int c, i, k;
+    unsigned char *gold = (unsigned char *)read_file("interleave.u8", &len);
+    for (c = 0; c < 4; c++) {
+        int size = cases[c][0], depth = cases[c][1];
+        fdsp_interleave fwd, rev, bfwd;
+        CHECK(fdsp_interleave_init(&fwd, size, depth, FDSP_INTERLEAVE_FWD) == 0, "il init");
+        fdsp_interleave_init(&rev, size, depth, FDSP_INTERLEAVE_REV);
+        fdsp_interleave_init(&bfwd, size, depth, FDSP_INTERLEAVE_FWD);
+        lcg_state = (uint32_t)(700 + c);
+        for (i = 0; i < 400; i++) {
+            unsigned char s[8], r[8];
+            unsigned int bits;
+            for (k = 0; k < size; k++)
+                s[k] = r[k] = (unsigned char)(256.0 * (0.5 + 0.5 * lcg_next()));
+            fdsp_interleave_symbols(&fwd, s);
+            fdsp_interleave_symbols(&rev, r);
+            bits = (unsigned int)(1024.0 * (0.5 + 0.5 * lcg_next())) & ((1u << size) - 1);
+            fdsp_interleave_bits(&bfwd, &bits);
+            CHECK(memcmp(gold + pos, s, (size_t)size) == 0, "il fwd %d/%d", c, i);
+            pos += (size_t)size;
+            CHECK(memcmp(gold + pos, r, (size_t)size) == 0, "il rev %d/%d", c, i);
+            pos += (size_t)size;
+            CHECK(gold[pos] == (unsigned char)bits, "il bits %d/%d", c, i);
+            pos++;
+        }
+        fdsp_interleave_free(&fwd);
+        fdsp_interleave_free(&rev);
+        fdsp_interleave_free(&bfwd);
+    }
+    CHECK(pos == len, "interleave count");
+    free(gold);
+}
+
+static void test_varicode(void)
+{
+    size_t len, pos = 0;
+    int c;
+    unsigned int s;
+    char *enc = (char *)read_file("mfsk_varienc.txt", &len);
+    int32_t *dec;
+    for (c = -1; c <= 256; c++) {
+        CHECK(strcmp(enc + pos, fdsp_mfsk_varienc(c)) == 0, "varienc %d", c);
+        pos += strlen(enc + pos) + 1;
+    }
+    CHECK(pos == len, "varienc count");
+    dec = (int32_t *)read_file("mfsk_varidec.i32", &len);
+    for (s = 0; s < 4096; s++)
+        CHECK(fdsp_mfsk_varidec(s) == dec[s], "varidec %u", s);
+    free(dec);
+    dec = (int32_t *)read_file("parity.i32", &len);
+    for (s = 0; s < 10000; s++)
+        CHECK(fdsp_parity((unsigned long)s * 7) == dec[s], "parity %u", s * 7);
+    CHECK(fdsp_decayavg(1.0, 5.0, 4) == 2.0 && fdsp_decayavg(1.0, 5.0, 1) == 5.0, "decayavg");
+    free(enc);
+    free(dec);
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1)
@@ -263,6 +625,15 @@ int main(int argc, char **argv)
     test_fht();
     test_gray();
     test_lowpass3();
+    test_gfft();
+    test_fftfilt();
+    test_fir();
+    test_movavg();
+    test_sfft();
+    test_conv();
+    test_viterbi_long_run();
+    test_interleave();
+    test_varicode();
     if (failures) {
         fprintf(stderr, "%d failure(s)\n", failures);
         return 1;

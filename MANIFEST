@@ -1,2 +1,5 @@
 include/fldigi_dsp.h
+src/fdsp_fec.c
+src/fdsp_filters.c
+src/fdsp_gfft.c
 src/fdsp_jalocha.c
