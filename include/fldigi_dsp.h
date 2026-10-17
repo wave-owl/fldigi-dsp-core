@@ -112,6 +112,10 @@ void fdsp_lowpass3_process(fdsp_lowpass3 *f, double input, double weight, double
 double fdsp_decayavg(double average, double input, int weight);
 /* parity, misc/misc.cxx:34-42, 67-70 (hweight32 & 1) */
 int fdsp_parity(unsigned long w);
+/* sin(x) and cos(x) as an optimising compiler evaluates a cos/sin pair of one argument:
+ * one sincos call (macOS __sincos, whose last bit can differ from separate sin and cos
+ * calls), so the result does not depend on the optimisation level of the build. */
+void fdsp_sincos(double x, double *s, double *c);
 
 /* ------------------------------------------------------------------------------------
  * Complex FFT of fldigi (src/include/gfft.h, g_fft<double>, John Green's algorithm).

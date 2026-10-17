@@ -56,6 +56,16 @@ int fdsp_parity(unsigned long w)
     return (int)(w & 1);
 }
 
+void fdsp_sincos(double x, double *s, double *c)
+{
+#if defined(__APPLE__)
+    __sincos(x, s, c);
+#else
+    *s = sin(x);
+    *c = cos(x);
+#endif
+}
+
 /* ---------------------------------------------------------------------------------- */
 /* fftfilt, filters/fftfilt.cxx:55-237, include/fftfilt.h:47-55                                       */
 /* ---------------------------------------------------------------------------------- */
@@ -219,16 +229,34 @@ static double fir_hamming(double x)
 
 static double fir_mac(const double *a, const double *b, unsigned int size)
 {
-    /* include/filters.h:74-91: four partial sums */
-    double sum = 0.0, sum2 = 0.0, sum3 = 0.0, sum4 = 0.0;
-    for (; size > 3; size -= 4, a += 4, b += 4) {
-        sum += a[0] * b[0];
-        sum2 += a[1] * b[1];
-        sum3 += a[2] * b[2];
-        sum4 += a[3] * b[3];
+    /* mac, include/filters.h:74-91: four partial sums. fldigi's reference build (Apple
+     * clang -O2 on arm64, FP contraction on) vectorises the loop over groups of four
+     * iterations without fusing product and sum (the in-order reduction is done on
+     * extracted lanes), and runs the remaining iterations and the tail as fused
+     * multiply-adds. That evaluation is written out here, so every compiler and
+     * optimisation level gives the reference result. */
+    double sum = 0.0, sum2 = 0.0, sum3 = 0.0, sum4 = 0.0, p;
+    unsigned int iters = size > 3 ? (size - 4) / 4 + 1 : 0;
+    unsigned int vec = size >= 16 ? iters & ~3u : 0;
+    unsigned int it;
+    for (it = 0; it < vec; it++, a += 4, b += 4) {
+        p = a[0] * b[0];
+        sum += p;
+        p = a[1] * b[1];
+        sum2 += p;
+        p = a[2] * b[2];
+        sum3 += p;
+        p = a[3] * b[3];
+        sum4 += p;
     }
-    for (; size; --size)
-        sum += (*a++) * (*b++);
+    for (; it < iters; it++, a += 4, b += 4) {
+        sum = fma(a[0], b[0], sum);
+        sum2 = fma(a[1], b[1], sum2);
+        sum3 = fma(a[2], b[2], sum3);
+        sum4 = fma(a[3], b[3], sum4);
+    }
+    for (size -= 4 * iters; size; --size)
+        sum = fma(*a++, *b++, sum);
     return sum + sum2 + sum3 + sum4;
 }
 
@@ -433,8 +461,10 @@ int fdsp_sfft_init(fdsp_sfft *s, int len, int first, int last)
     tau = 2.0 * M_PI / len;
     s->k2 = 1.0;
     for (i = 0; i < len; i++) {
-        s->vrot[i].re = (double)(SFFT_K1 * cos(phi));
-        s->vrot[i].im = (double)(SFFT_K1 * sin(phi));
+        double sn, cs;
+        fdsp_sincos(phi, &sn, &cs);
+        s->vrot[i].re = (double)(SFFT_K1 * cs);
+        s->vrot[i].im = (double)(SFFT_K1 * sn);
         phi += tau;
         s->k2 = (double)(s->k2 * SFFT_K1);
     }
@@ -455,8 +485,9 @@ void fdsp_sfft_run(fdsp_sfft *s, fdsp_cmpx input, fdsp_cmpx *result, int stride)
     int i;
     fdsp_cmpx *de = &s->delay[s->ptr];
     fdsp_cmpx z, a, b;
-    z.re = input.re - s->k2 * de->re;
-    z.im = input.im - s->k2 * de->im;
+    /* fused in fldigi's reference build (fmsub), explicit here for every build */
+    z.re = fma(-s->k2, de->re, input.re);
+    z.im = fma(-s->k2, de->im, input.im);
     *de = input;
     ++s->ptr;
     if (s->ptr >= s->fftlen)

@@ -82,6 +82,7 @@ All declarations are in `include/fldigi_dsp.h`.
 | `void fdsp_ifht_i8(int8_t *x, size_t n)` | `IFHT<int8_t>`, `pj_mfsk.h:1165` | The inverse transform on `int8_t`, as the Olivia encoder uses it. |
 | `uint8_t fdsp_gray_code(uint8_t b)` / `fdsp_binary_code(uint8_t g)` | `pj_gray.h:11-21` | Gray code and its inverse. |
 | `double fdsp_decayavg(double avg, double in, int w)` / `int fdsp_parity(unsigned long w)` | `misc.h:59-63`, `misc.cxx:34-70` | fldigi's exponential average and bit parity. |
+| `void fdsp_sincos(double x, double *s, double *c)` | – | sine and cosine with one `sincos` call (macOS `__sincos`), as fldigi's optimised build evaluates a cos/sin pair. |
 | `fdsp_gfft_init/free/forward/inverse` | `g_fft<double>`, `gfft.h` | Complex FFT of 16 .. 2^28 points, in place; the inverse is scaled by 1/N (as fldigi's). Tables in `init`. |
 | `fdsp_fftfilt_init(f, f1, f2, len)`, `_create`, `_run(f, in, &out)`, `_free` | `fftfilt.cxx:55-237` | Overlap-add FFT filter (`len` FFT points, `len/2` taps of Blackman-windowed sinc, unit peak gain). `run` takes one sample and returns `len/2` when a block of output is ready. |
 | `fdsp_fir_init_hilbert/_lowpass/_bandpass`, `fdsp_fir_run`, `fdsp_fir_bp_taps`, `fdsp_fir_free` | `filters.cxx:46-187` | `C_FIR_filter` with optional decimation; the output lags one sample as in fldigi (dot product over the previous `len` samples). |
@@ -184,7 +185,7 @@ fixed pseudo-random inputs (a 32-bit LCG shared with the C test) and write the r
 | LowPass3, 3 weights x 2 feedbacks x 2000 steps | `lowpass3.f64` | bit for bit, plus settling to a constant |
 | g_fft forward and inverse, sizes 16 .. 8192 | `gfft<n>.f64`, `gfft<n>_utbl.f64` | cosine table within 2^-52, transforms bit for bit on the golden table |
 | fftfilt: THOR16 and DominoEX11 band passes, a low pass, 6000 samples | `fftfilt<c>_shape.f64`, `_out.f64` | shape within 1e-14, every output block bit for bit on the golden shape |
-| C_FIR_filter: Hilbert 37, low pass 127, band pass 65 with decimation 2, 9000 samples (buffer wraps) | `fir<c>_taps.f64`, `_out.f64` | taps within 1e-16, outputs bit for bit |
+| C_FIR_filter: Hilbert 37, low pass 127, band pass 65 with decimation 2, 9000 samples (buffer wraps) | `fir<c>_taps.f64`, `_out.f64` | taps within 1e-16, outputs bit for bit (golden from `filters.cxx` built like fldigi's reference build, see below) |
 | Cmovavg, lengths 8 and 16, with reset | `movavg.f64` | bit for bit |
 | sfft (1024/184..248, 512/91..121, 64/3..20), stride 3, 3000 steps | `sfft<c>.f64`, `_vrot.f64` | rotations within 2^-52 (`long double` K1), bins bit for bit on the golden rotations |
 | Encoder and Viterbi, K=7 (0x6d, 0x4f) and K=15 (044735, 063057), noisy soft symbols with erasures, chunk 1 (traceback 45/180) and 8 | `conv<k>_*.i32`, `conv<k>_sym.u8` | encoder output, decoded bits and metrics exact; plus 9 million clean pairs without error (the overflow case) |
@@ -192,7 +193,19 @@ fixed pseudo-random inputs (a 32-bit LCG shared with the C test) and write the r
 | MFSK varicode, every byte and every 12-bit code; parity | `mfsk_varienc.txt`, `mfsk_varidec.i32`, `parity.i32` | exact |
 
 Both sides are compiled without floating-point contraction (`-ffp-contract=off`), so the
-comparison is between identical operation sequences. CI runs the tests on Ubuntu and macOS,
+comparison is between identical operation sequences, with one exception: fldigi's
+`filters.cxx` (FIR, `Cmovavg`, `sfft`) is built as fldigi's reference build compiles it
+(Apple clang `-O2`, contraction on, arm64; generate the goldens there). In that build the
+sliding DFT's input step is one fused multiply-add and the FIR dot product is vectorised over
+groups of four iterations without fusion, the rest fused. `fdsp_sfft_run` and the FIR's `mac`
+write exactly that evaluation out with `fma()`, so they give the reference result with any
+compiler, optimisation level and contraction setting.
+
+**Floating-point notes for family cores.** fldigi multiplies `std::complex<double>` with the
+four products in separate statements, so they are never fused; this library does the same.
+Family cores compile with `-ffp-contract=on` to fuse the same scalar expressions as fldigi's
+reference build, and `fdsp_sincos` computes a sine/cosine pair with one `sincos` call as an
+optimising compiler does (on macOS its last bit can differ from separate `sin` and `cos`). CI runs the tests on Ubuntu and macOS,
 and again under AddressSanitizer and UndefinedBehaviorSanitizer (`make sanitize`).
 
 ## Performance and memory

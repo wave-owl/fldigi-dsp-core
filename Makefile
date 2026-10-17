@@ -51,8 +51,14 @@ golden:
 		tests/golden/make_golden.cxx -o $(BUILD)/make_golden
 	$(BUILD)/make_golden tests/golden
 	$(CXX) -std=c++11 -O2 -ffp-contract=off -w -Itests/golden/stub -I$(FLDIGI)/src/include \
-		tests/golden/make_golden_fldigi.cxx $(FLDIGI)/src/filters/fftfilt.cxx \
-		$(FLDIGI)/src/filters/filters.cxx $(FLDIGI)/src/filters/viterbi.cxx \
+		-c tests/golden/make_golden_fldigi.cxx -o $(BUILD)/make_golden_fldigi.o
+	# filters.cxx (FIR, Cmovavg, sfft) as fldigi's reference build compiles it: Apple clang
+	# -O2 with FP contraction on, on arm64 (generate these goldens on that platform)
+	$(CXX) -std=c++11 -O2 -ffp-contract=on -w -Itests/golden/stub -I$(FLDIGI)/src/include \
+		-c $(FLDIGI)/src/filters/filters.cxx -o $(BUILD)/fldigi_filters.o
+	$(CXX) -std=c++11 -O2 -ffp-contract=off -w -Itests/golden/stub -I$(FLDIGI)/src/include \
+		$(BUILD)/make_golden_fldigi.o $(BUILD)/fldigi_filters.o $(FLDIGI)/src/filters/fftfilt.cxx \
+		$(FLDIGI)/src/filters/viterbi.cxx \
 		$(FLDIGI)/src/mfsk/interleave.cxx $(FLDIGI)/src/mfsk/mfskvaricode.cxx \
 		$(FLDIGI)/src/misc/misc.cxx -o $(BUILD)/make_golden_fldigi
 	$(BUILD)/make_golden_fldigi tests/golden

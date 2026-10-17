@@ -19,6 +19,10 @@ Primitives for `fldigi-ifk-core` (THOR and DominoEX; wave-owl change
   `decayavg` and `parity`.
 - Golden data from fldigi's own sources (`tests/golden/make_golden_fldigi.cxx`); tables that
   come from libm are compared within a few ulp and injected, the processing bit for bit.
+- `std::complex` products are never fused (as in fldigi); the FIR dot product and the sliding
+  DFT input step follow fldigi's reference build (Apple clang -O2, arm64) explicitly with
+  `fma()`; `fdsp_sincos` evaluates sine/cosine pairs with one `sincos` call. Family cores built
+  with contraction on reproduce fldigi's binary bit for bit at every optimisation level.
 
 ## 0.1.0 - 2026-10-17
 
