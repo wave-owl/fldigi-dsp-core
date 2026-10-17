@@ -35,10 +35,10 @@ extern "C" {
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
 #define FDSP_VERSION_MINOR 4
-#define FDSP_VERSION_PATCH 0
-#define FDSP_VERSION_STRING "0.4.0"
+#define FDSP_VERSION_PATCH 1
+#define FDSP_VERSION_STRING "0.4.1"
 
-/* "fldigi-dsp-core 0.4.0 contract=dsp-c1 abi=1". Static string. */
+/* "fldigi-dsp-core 0.4.1 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
 
 /* ------------------------------------------------------------------------------------
@@ -199,7 +199,7 @@ int fdsp_fir_init(fdsp_fir *f, int len, int dec, const double *itaps, const doub
 int fdsp_fir_irun(fdsp_fir *f, double in, double *out);
 
 /* ------------------------------------------------------------------------------------
- * cmac: circular complex multiply-accumulate (include/complex.h:33-41, 0.4.0):
+ * cmac (0.4.0): circular complex multiply-accumulate of include/complex.h:33-41:
  * sum over i of a[i] * b[(ptr + i) % len], ptr taken modulo len first; the complex
  * products are evaluated as std::complex does (four separate products, never fused).
  * ------------------------------------------------------------------------------------ */

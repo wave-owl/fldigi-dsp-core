@@ -77,7 +77,7 @@ All declarations are in `include/fldigi_dsp.h`.
 
 | Function | fldigi | Description |
 |---|---|---|
-| `const char *fdsp_version(void)` | – | `"fldigi-dsp-core 0.4.0 contract=dsp-c1 abi=1"`. `FDSP_VERSION_STRING` holds `"0.4.0"`. |
+| `const char *fdsp_version(void)` | – | `"fldigi-dsp-core 0.4.1 contract=dsp-c1 abi=1"`. `FDSP_VERSION_STRING` holds `"0.4.1"`. |
 | `int fdsp_r2fft_init(fdsp_r2fft *f, size_t n)` | `r2FFT::Preset`, `pj_fft.h:92-125` | Tables for an `n`-point FFT, `n` a power of two `>= 4`. Twiddles cover the full circle, `twiddle[k] = e^{+j 2 pi k / n}` (first quarter from `cos`/`sin`, the rest by rotation, as fldigi). Returns 0, or -1 (bad size, out of memory; the struct is then zeroed). |
 | `void fdsp_r2fft_free(fdsp_r2fft *f)` | `r2FFT::Free` | Releases the tables; safe to call twice. |
 | `void fdsp_r2fft_process(const fdsp_r2fft *f, fdsp_cmpx *x)` | `r2FFT::Process`, `pj_fft.h:249-250` | In-place forward FFT `X[k] = sum x[n] e^{-j 2 pi k n / N}`, bit reversal first, radix-2 butterflies with the conjugated twiddle (`pj_fft.h:210-224, 277-297`). Not normalised. |
@@ -157,7 +157,7 @@ wave-owl requirement R-920.3 (invariant INV-920): a family core checks the `dsp/
 before it compiles anything. Each family core carries a `dsp.lock`:
 
 ```
-version=0.4.0
+version=0.4.1
 commit=<git commit of this repository>
 checksum=<content checksum of the linked files>
 files=include/fldigi_dsp.h src/fdsp_jalocha.c src/fdsp_gfft.c src/fdsp_filters.c src/fdsp_fec.c src/fdsp_resample.c
