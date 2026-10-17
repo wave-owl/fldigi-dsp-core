@@ -3,10 +3,14 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.4.2 - 2026-10-17
+
+- The 0.4.1 entry below no longer quotes the old comment. No functional change.
+
 ## 0.4.1 - 2026-10-17
 
-- The `cmac` comment no longer reads like an fldigi line range followed by a second range
-  (`complex.h:33-41, 0.4.0`), which wave-owl's citation check parsed as line 0. No functional
+- The `cmac` comment no longer puts the version right after the fldigi line range, which
+  wave-owl's citation check parsed as a second range starting at line 0. No functional
   change.
 
 ## 0.4.0 - 2026-10-17
