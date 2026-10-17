@@ -8,7 +8,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * std::complex<double> arithmetic is written out as fldigi's compiler evaluates it
- * ((a + jb)(c + jd) = (ac - bd) + j(ad + bc), |z| = hypot). The sliding DFT keeps
+ * ((a + jb)(c + jd) = (ac - bd) + j(ad + bc) with the products in separate statements,
+ * |z| = hypot). Expressions that are one statement in fldigi stay one statement here, so
+ * a build with floating-point contraction (-ffp-contract=on, as fldigi's own) fuses the
+ * same operations as fldigi's binary. The sliding DFT keeps
  * fldigi's long double damping constant K1, so its results follow the platform's
  * long double like fldigi's do.
  */
@@ -24,9 +27,13 @@
 
 static fdsp_cmpx cmul(fdsp_cmpx a, fdsp_cmpx b)
 {
+    /* std::complex<double> operator* as libc++/libstdc++ evaluate it: four products in
+     * separate statements, so a compiler that contracts a * b + c within one expression
+     * (clang and gcc by default) does not fuse them into FMAs here either */
     fdsp_cmpx r;
-    r.re = a.re * b.re - a.im * b.im;
-    r.im = a.re * b.im + a.im * b.re;
+    double ac = a.re * b.re, bd = a.im * b.im, ad = a.re * b.im, bc = a.im * b.re;
+    r.re = ac - bd;
+    r.im = ad + bc;
     return r;
 }
 
