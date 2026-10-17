@@ -16,7 +16,8 @@ CFLAGS ?= -O3
 CORE_FLAGS = -std=c99 -Wall -Wextra -Werror -pedantic -ffp-contract=off -fPIC -Iinclude
 LDLIBS = -lm
 
-DSP_SOURCES = src/fdsp_jalocha.c src/fdsp_gfft.c src/fdsp_filters.c src/fdsp_fec.c
+DSP_SOURCES = src/fdsp_jalocha.c src/fdsp_gfft.c src/fdsp_filters.c src/fdsp_fec.c \
+              src/fdsp_resample.c
 DSP_HEADERS = include/fldigi_dsp.h
 OBJ = $(patsubst src/%.c,$(BUILD)/%.o,$(DSP_SOURCES))
 

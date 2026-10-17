@@ -3,6 +3,18 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.3.0 - 2026-10-17
+
+The rate converter for `fldigi-mfsk-core` (wave-owl change `add-fldigi-mfsk-core`). Additive:
+the 0.2 API and its results are unchanged.
+
+- `fdsp_resampler_*`: streaming rational polyphase resampler (Kaiser-windowed sinc, unit DC
+  gain per phase, chunking-independent output). Not an fldigi port: fldigi converts between
+  the sound card and the modem rate with libsamplerate. It lets the 11025 Hz modems (MFSK11/22,
+  later THOR/DominoEX 5/11/22/44/88) run behind the station's 8 kHz audio (umbrella
+  `add-fldigi-native-modes`, open question 2: one shared copy instead of one per core).
+- New file `src/fdsp_resample.c` (in `MANIFEST`, so family cores pin it in `dsp.lock`).
+
 ## 0.2.0 - 2026-10-17
 
 Primitives for `fldigi-ifk-core` (THOR and DominoEX; wave-owl change

@@ -32,7 +32,8 @@ needs and refuses to build when the submodule is not the pinned version (see
 The scope follows the shared-DSP table of wave-owl's umbrella change
 `add-fldigi-native-modes` (design.md, "fldigi-dsp-core: scope sketch", requirement R-920).
 Version 0.1.0 implemented what the first consumer, `fldigi-olivia-core`, needs; 0.2.0 adds
-what `fldigi-ifk-core` (THOR and DominoEX) needs. The remaining rows are reserved and get their
+what `fldigi-ifk-core` (THOR and DominoEX) needs, 0.3.0 the rate converter of
+`fldigi-mfsk-core` (MFSK11/22 at the station's 8 kHz). The remaining rows are reserved and get their
 own golden tests when the first family that needs them lands (wave-owl D-926: the first family
 change that needs a primitive adds it here).
 
@@ -51,6 +52,7 @@ change that needs a primitive adds it here).
 | Block interleaver (`fdsp_interleave_*`) | `src/mfsk/interleave.cxx:34-100` | **0.2.0** | THOR, DominoEX FEC; later MFSK |
 | IZ8BLY MFSK varicode (`fdsp_mfsk_varienc`, `fdsp_mfsk_varidec`) | `src/mfsk/mfskvaricode.cxx:35-349` | **0.2.0** | THOR (primary set), DominoEX FEC; later MFSK |
 | `decayavg`, `parity` (`fdsp_decayavg`, `fdsp_parity`) | `src/include/misc.h:59-63`, `src/misc/misc.cxx:34-70` | **0.2.0** | THOR/DominoEX |
+| Rational polyphase resampler (`fdsp_resampler_*`) | – (fldigi uses libsamplerate between the sound card and the modem rate) | **0.3.0** | MFSK11/22 (8000 <-> 11025 Hz); later THOR/DominoEX 11025 Hz submodes |
 | Varicode tables of FSQ and IFKP | `src/fsq/fsq_varicode.cxx`, `src/ifkp/ifkp_varicode.cxx` | planned | FSQ, IFKP |
 
 THOR's secondary character set (`thorvaricode.cxx`) and the DominoEX nibble varicode
@@ -72,7 +74,7 @@ All declarations are in `include/fldigi_dsp.h`.
 
 | Function | fldigi | Description |
 |---|---|---|
-| `const char *fdsp_version(void)` | – | `"fldigi-dsp-core 0.2.0 contract=dsp-c1 abi=1"`. `FDSP_VERSION_STRING` holds `"0.2.0"`. |
+| `const char *fdsp_version(void)` | – | `"fldigi-dsp-core 0.3.0 contract=dsp-c1 abi=1"`. `FDSP_VERSION_STRING` holds `"0.3.0"`. |
 | `int fdsp_r2fft_init(fdsp_r2fft *f, size_t n)` | `r2FFT::Preset`, `pj_fft.h:92-125` | Tables for an `n`-point FFT, `n` a power of two `>= 4`. Twiddles cover the full circle, `twiddle[k] = e^{+j 2 pi k / n}` (first quarter from `cos`/`sin`, the rest by rotation, as fldigi). Returns 0, or -1 (bad size, out of memory; the struct is then zeroed). |
 | `void fdsp_r2fft_free(fdsp_r2fft *f)` | `r2FFT::Free` | Releases the tables; safe to call twice. |
 | `void fdsp_r2fft_process(const fdsp_r2fft *f, fdsp_cmpx *x)` | `r2FFT::Process`, `pj_fft.h:249-250` | In-place forward FFT `X[k] = sum x[n] e^{-j 2 pi k n / N}`, bit reversal first, radix-2 butterflies with the conjugated twiddle (`pj_fft.h:210-224, 277-297`). Not normalised. |
@@ -91,6 +93,7 @@ All declarations are in `include/fldigi_dsp.h`.
 | `fdsp_encoder_init/encode/free`, `fdsp_viterbi_init/reset/set_traceback/set_chunksize/decode/free` | `viterbi.cxx:36-257` | Rate-1/2 code, K 3..15, soft symbols 0..255 (128 = erasure). `decode` returns the bits of a finished chunk or -1. Path metrics are renormalised on every call (fldigi skips it on traceback calls and overflows after ~8.4 M pairs with chunk size 1); decisions are identical. |
 | `fdsp_interleave_init/flush/symbols/bits/free` | `interleave.cxx:34-100` | `size x size x depth` interleaver, forward (TX, zero-filled) or reverse (RX, erasure-filled). |
 | `fdsp_mfsk_varienc(c)` / `fdsp_mfsk_varidec(code)` | `mfskvaricode.cxx:332-349` | IZ8BLY varicode: the code string of a byte, the byte of a code (or -1). |
+| `fdsp_resampler_init(r, in_rate, out_rate, taps)`, `_run(r, in, n, out)`, `_max_out(r, n)`, `_reset`, `_free` | – (not a port) | Streaming rational resampler: `out/in` reduced to `up/down` (each at most 4096), Kaiser-windowed sinc (beta 8, cutoff 0.45 x the lower rate, `taps x ceil(down/up)` input samples of support), unit DC gain per phase. The output does not depend on the chunking; `_max_out` bounds one call. 32 taps give a flat pass band (< 0.05 dB at 1500 Hz) and > 60 dB alias rejection. |
 | `void fdsp_lowpass3_set(fdsp_lowpass3 *f, double level)` | `LowPass3_Filter::Set`, `pj_lowpass3.h:29-41` | All three stages to `level`. |
 | `void fdsp_lowpass3_process(fdsp_lowpass3 *f, double in, double w, double fb)` | `LowPass3_Filter::Process`, `pj_lowpass3.h:17-27` | One step of the three-stage integrator; `w` is 1 / peaking time, `fb` the feedback (fldigi's default 0.1: overshoot about 1e-6). The result is `f->output`. |
 
@@ -149,10 +152,10 @@ wave-owl requirement R-920.3 (invariant INV-920): a family core checks the `dsp/
 before it compiles anything. Each family core carries a `dsp.lock`:
 
 ```
-version=0.2.0
+version=0.3.0
 commit=<git commit of this repository>
 checksum=<content checksum of the linked files>
-files=include/fldigi_dsp.h src/fdsp_jalocha.c src/fdsp_gfft.c src/fdsp_filters.c src/fdsp_fec.c
+files=include/fldigi_dsp.h src/fdsp_jalocha.c src/fdsp_gfft.c src/fdsp_filters.c src/fdsp_fec.c src/fdsp_resample.c
 ```
 
 and its `tools/check_dsp.sh` refuses the build when `dsp/` reports another
@@ -191,6 +194,7 @@ fixed pseudo-random inputs (a 32-bit LCG shared with the C test) and write the r
 | Encoder and Viterbi, K=7 (0x6d, 0x4f) and K=15 (044735, 063057), noisy soft symbols with erasures, chunk 1 (traceback 45/180) and 8 | `conv<k>_*.i32`, `conv<k>_sym.u8` | encoder output, decoded bits and metrics exact; plus 9 million clean pairs without error (the overflow case) |
 | Interleaver 4x4x10, 4x4x50, 4x4x4, 5x5x6, symbols both directions and bits | `interleave.u8` | exact |
 | MFSK varicode, every byte and every 12-bit code; parity | `mfsk_varienc.txt`, `mfsk_varidec.i32`, `parity.i32` | exact |
+| Resampler 8000/11025, 11025/8000, 48000/11025, 8000/8000, 12000/8000 (no fldigi golden: not a port) | – | gain of a 1500 Hz tone within 0.05 dB, leakage and aliasing below -40/-60 dB, output identical for random chunkings, `_max_out` holds |
 
 Both sides are compiled without floating-point contraction (`-ffp-contract=off`), so the
 comparison is between identical operation sequences, with one exception: fldigi's

@@ -34,11 +34,11 @@ extern "C" {
 /* Version of this library. Family cores pin it (dsp.lock) and refuse to build
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
-#define FDSP_VERSION_MINOR 2
+#define FDSP_VERSION_MINOR 3
 #define FDSP_VERSION_PATCH 0
-#define FDSP_VERSION_STRING "0.2.0"
+#define FDSP_VERSION_STRING "0.3.0"
 
-/* "fldigi-dsp-core 0.2.0 contract=dsp-c1 abi=1". Static string. */
+/* "fldigi-dsp-core 0.3.0 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
 
 /* ------------------------------------------------------------------------------------
@@ -311,6 +311,37 @@ const char *fdsp_mfsk_varienc(int c);
 /* varidec, mfsk/mfskvaricode.cxx:339-349: the byte of a code (bits MSB first, without the
  * separating "001"), or -1. */
 int fdsp_mfsk_varidec(unsigned int symbol);
+
+/* ------------------------------------------------------------------------------------
+ * Rational polyphase resampler (not in fldigi, which uses libsamplerate between the sound
+ * card and the modem rate): out_rate / in_rate reduced to up / down, Kaiser-windowed sinc
+ * low-pass (cutoff 0.45 x the lower rate), unit DC gain per phase. Streaming; the output
+ * does not depend on the chunking of the input. Used for the 11025 Hz modems at the
+ * station's 8 kHz (MFSK11/22, THOR/DominoEX 5/11/22/44/88).
+ * ------------------------------------------------------------------------------------ */
+#define FDSP_RESAMPLE_MAX_UP 4096   /* largest reduced up or down factor */
+typedef struct fdsp_resampler {
+    int in_rate;
+    int out_rate;
+    int up;
+    int down;
+    int taps;               /* input samples per output: taps_per_phase x ceil(down / up) */
+    double *h;              /* up x taps prototype coefficients, h[p + j * up] */
+    double *hist;           /* taps past input samples (ring) */
+    int pos;
+    int acc;
+} fdsp_resampler;
+
+/* Returns 0, or -1 (rate <= 0, taps_per_phase outside 4 .. 256, a reduced factor above
+ * FDSP_RESAMPLE_MAX_UP, out of memory; *r is then zeroed). 32 taps per phase give > 70 dB
+ * stop-band attenuation. */
+int fdsp_resampler_init(fdsp_resampler *r, int in_rate, int out_rate, int taps_per_phase);
+void fdsp_resampler_free(fdsp_resampler *r);
+void fdsp_resampler_reset(fdsp_resampler *r);     /* clear the history and the phase */
+/* Upper bound of the samples one fdsp_resampler_run of n_in inputs writes. */
+size_t fdsp_resampler_max_out(const fdsp_resampler *r, size_t n_in);
+/* n input samples -> returns the number of output samples written to out. */
+size_t fdsp_resampler_run(fdsp_resampler *r, const double *in, size_t n, double *out);
 
 #ifdef __cplusplus
 }

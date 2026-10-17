@@ -6,9 +6,14 @@
  */
 #include "fldigi_dsp.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 static int failures;
 static const char *golden_dir = "tests/golden";
@@ -615,6 +620,79 @@ static void test_varicode(void)
     free(dec);
 }
 
+/* Rational resampler (not an fldigi port): unit gain, a tone keeps its frequency and
+ * amplitude, an out-of-band tone is suppressed, the output does not depend on the
+ * chunking, and max_out bounds every call. */
+static double tone_power(const double *x, size_t n, double f, double rate)
+{
+    double re = 0, im = 0;
+    size_t i;
+    for (i = 0; i < n; i++) {
+        re += x[i] * cos(2 * M_PI * f * (double)i / rate);
+        im += x[i] * sin(2 * M_PI * f * (double)i / rate);
+    }
+    return (re * re + im * im) / ((double)n * (double)n) * 4.0;
+}
+
+static void test_resampler(void)
+{
+    static const int rates[][2] = {{8000, 11025}, {11025, 8000}, {48000, 11025},
+                                   {8000, 8000}, {12000, 8000}};
+    size_t c;
+    fdsp_resampler bad;
+    CHECK(fdsp_resampler_init(&bad, 0, 8000, 32) == -1, "resampler rate 0");
+    CHECK(fdsp_resampler_init(&bad, 8000, 11025, 2) == -1, "resampler taps 2");
+    CHECK(fdsp_resampler_init(&bad, 8000, 8191 * 7, 32) == -1, "resampler factor");
+    for (c = 0; c < sizeof rates / sizeof rates[0]; c++) {
+        int in = rates[c][0], out = rates[c][1];
+        size_t n = (size_t)in * 2, i, k1 = 0, k2 = 0, off;
+        double *x = (double *)malloc(n * sizeof(double));
+        double *y1, *y2, p, pa;
+        fdsp_resampler r1, r2;
+        CHECK(fdsp_resampler_init(&r1, in, out, 32) == 0, "resampler init %d/%d", in, out);
+        CHECK(fdsp_resampler_init(&r2, in, out, 32) == 0, "resampler init %d/%d", in, out);
+        y1 = (double *)malloc(fdsp_resampler_max_out(&r1, n) * sizeof(double));
+        y2 = (double *)malloc(fdsp_resampler_max_out(&r1, n) * sizeof(double));
+        /* 1500 Hz in band + 3.9 kHz below the lower Nyquist only when it is not aliased */
+        for (i = 0; i < n; i++)
+            x[i] = 0.5 * sin(2 * M_PI * 1500.0 * (double)i / in);
+        k1 = fdsp_resampler_run(&r1, x, n, y1);
+        CHECK(k1 <= fdsp_resampler_max_out(&r1, n), "resampler bound %d/%d", in, out);
+        lcg_state = 7;
+        for (off = 0; off < n;) {
+            size_t m = 1 + (size_t)(fabs(lcg_next()) * 700), got;
+            if (m > n - off)
+                m = n - off;
+            got = fdsp_resampler_run(&r2, x + off, m, y2 + k2);
+            CHECK(got <= fdsp_resampler_max_out(&r2, m), "resampler chunk bound");
+            k2 += got;
+            off += m;
+        }
+        CHECK(k1 == k2 && same_doubles(y1, y2, k1), "resampler chunking %d/%d", in, out);
+        CHECK(labs((long)k1 - (long)(n * (size_t)out / (size_t)in)) <= 1, "resampler count");
+        /* skip the filter's settling time, then measure the tone */
+        p = tone_power(y1 + out / 4, k1 - (size_t)out / 4, 1500.0, out);
+        CHECK(fabs(10 * log10(p / 0.25)) < 0.05, "resampler gain %d/%d: %g", in, out, p);
+        pa = tone_power(y1 + out / 4, k1 - (size_t)out / 4, 1700.0, out);
+        CHECK(pa < p * 1e-4, "resampler leakage %d/%d", in, out);
+        if (in > out) {
+            /* a tone above the output Nyquist must not alias into the band */
+            double fa = 0.5 * out + 900.0;
+            for (i = 0; i < n; i++)
+                x[i] = 0.5 * sin(2 * M_PI * fa * (double)i / in);
+            fdsp_resampler_reset(&r1);
+            k1 = fdsp_resampler_run(&r1, x, n, y1);
+            p = tone_power(y1 + out / 4, k1 - (size_t)out / 4, out - fa, out);
+            CHECK(p < 0.25 * 1e-6, "resampler alias %d/%d: %g", in, out, p);
+        }
+        fdsp_resampler_free(&r1);
+        fdsp_resampler_free(&r2);
+        free(x);
+        free(y1);
+        free(y2);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1)
@@ -634,6 +712,7 @@ int main(int argc, char **argv)
     test_viterbi_long_run();
     test_interleave();
     test_varicode();
+    test_resampler();
     if (failures) {
         fprintf(stderr, "%d failure(s)\n", failures);
         return 1;
