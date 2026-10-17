@@ -240,5 +240,10 @@ cores do not use this Makefile: they compile the files listed in their `dsp.lock
 ## License and credits
 
 GPL-3.0-or-later, as fldigi. The ported code is by Pawel Jalocha SP9VRC (FFT, FHT, Gray code,
-integrator, 1999-2004) with changes by Dave Freese W1HKJ (2019) in fldigi. The C port and the
+integrator, 1999-2004) with changes by Dave Freese W1HKJ (2019) in fldigi; fldigi's filters,
+convolutional code, interleaver and MFSK varicode by Dave Freese W1HKJ and the fldigi authors
+(after gmfsk by Tomi Manninen OH2BNS; varicode by Nino Porcino IZ8BLY). The complex FFT
+(`src/fdsp_gfft.c`) ports fldigi's `gfft.h`, John Green's public-domain FFT as a C++ template by
+Dave Freese, LGPL-3.0-or-later in fldigi; LGPL-3.0 permits distributing it as part of this
+GPL-3.0-or-later library. The C port and the
 tests: Gerolf Ziegenhain DG6FL, 2026. See `CHANGELOG.md` for the version history.
