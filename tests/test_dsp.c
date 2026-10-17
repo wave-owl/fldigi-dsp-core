@@ -501,6 +501,36 @@ static void test_movavg(void)
     free(gold);
 }
 
+static void test_movavgh(void)
+{
+    static const int lens[2] = {2049, 11428};
+    size_t len, pos = 0;
+    int k, i;
+    double *gold = (double *)read_file("movavgh.f64", &len);
+    fdsp_movavgh bad;
+    CHECK(fdsp_movavgh_init(&bad, 0) == -1, "movavgh rejects length 0");
+    for (k = 0; k < 2; k++) {
+        fdsp_movavgh m;
+        CHECK(fdsp_movavgh_init(&m, lens[k]) == 0, "movavgh init");
+        lcg_state = (uint32_t)(900 + lens[k]);
+        for (i = 0; i < 12000; i++) {
+            double v = fdsp_movavgh_run(&m, 1000.0 * lcg_next());
+            if (v != gold[pos++]) {
+                CHECK(0, "movavgh %d/%d", lens[k], i);
+                break;
+            }
+        }
+        pos = (size_t)(k + 1) * 12002 - 2;
+        fdsp_movavgh_reset(&m);
+        CHECK(fdsp_movavgh_run(&m, 3.25) == gold[pos++], "movavgh reset");
+        CHECK(fdsp_movavgh_run(&m, -1.5) == gold[pos++], "movavgh after reset");
+        fdsp_movavgh_free(&m);
+        fdsp_movavgh_free(&m);
+    }
+    CHECK(pos == len / sizeof(double), "movavgh count");
+    free(gold);
+}
+
 static void test_sfft(void)
 {
     static const int cases[3][3] = {{1024, 184, 248}, {512, 91, 121}, {64, 3, 20}};
@@ -783,6 +813,7 @@ int main(int argc, char **argv)
     test_fir_irun();
     test_cmac();
     test_movavg();
+    test_movavgh();
     test_sfft();
     test_conv();
     test_viterbi_long_run();

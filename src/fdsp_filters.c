@@ -477,6 +477,61 @@ double fdsp_movavg_run(fdsp_movavg *m, double a)
 }
 
 /* ---------------------------------------------------------------------------------- */
+/* Cmovavg with a heap window, filters/filters.cxx:261-307 (setLength 294-302)          */
+/* ---------------------------------------------------------------------------------- */
+
+int fdsp_movavgh_init(fdsp_movavgh *m, int len)
+{
+    if (!m)
+        return -1;
+    memset(m, 0, sizeof *m);
+    if (len < 1)
+        return -1;
+    m->in = (double *)malloc((size_t)len * sizeof(double));
+    if (!m->in)
+        return -1;
+    m->len = len;
+    m->empty = 1;
+    return 0;
+}
+
+void fdsp_movavgh_free(fdsp_movavgh *m)
+{
+    if (!m)
+        return;
+    free(m->in);
+    m->in = NULL;
+    m->len = 0;
+}
+
+void fdsp_movavgh_reset(fdsp_movavgh *m)
+{
+    m->empty = 1;
+}
+
+double fdsp_movavgh_run(fdsp_movavgh *m, double a)
+{
+    int i;
+    if (!m->in)
+        return a;
+    if (m->empty) {
+        m->empty = 0;
+        m->out = 0;
+        for (i = 0; i < m->len; i++) {
+            m->in[i] = a;
+            m->out += a;
+        }
+        m->pint = 0;
+        return a;
+    }
+    m->out = m->out - m->in[m->pint] + a;
+    m->in[m->pint] = a;
+    if (++m->pint >= m->len)
+        m->pint = 0;
+    return m->out / m->len;
+}
+
+/* ---------------------------------------------------------------------------------- */
 /* sfft, filters/filters.cxx:402-465, include/filters.h:136-151                                       */
 /* ---------------------------------------------------------------------------------- */
 

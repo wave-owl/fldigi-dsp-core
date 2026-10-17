@@ -3,6 +3,17 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.5.0 - 2026-10-17
+
+The primitive `fldigi-feldhell-core` needs (wave-owl change `add-fldigi-hellschreiber-core`).
+Additive: the 0.4 API and its results are unchanged.
+
+- `fdsp_movavgh_*`: fldigi's `Cmovavg` with a heap window of any length, as Hellschreiber's
+  receiver grows it with `setLength(500 * samplerate / rxpixrate)` (`feld.cxx` restart, up to
+  91428 samples, beyond the fixed `FDSP_MOVAVG_MAX` window of `fdsp_movavg`). Allocation only
+  in `fdsp_movavgh_init`.
+- Golden data from fldigi's own `Cmovavg` grown with `setLength` (`movavgh.f64`).
+
 ## 0.4.2 - 2026-10-17
 
 - The 0.4.1 entry below no longer quotes the old comment. No functional change.

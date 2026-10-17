@@ -34,9 +34,9 @@ extern "C" {
 /* Version of this library. Family cores pin it (dsp.lock) and refuse to build
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
-#define FDSP_VERSION_MINOR 4
-#define FDSP_VERSION_PATCH 2
-#define FDSP_VERSION_STRING "0.4.2"
+#define FDSP_VERSION_MINOR 5
+#define FDSP_VERSION_PATCH 0
+#define FDSP_VERSION_STRING "0.5.0"
 
 /* "fldigi-dsp-core 0.4.2 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
@@ -221,6 +221,24 @@ typedef struct fdsp_movavg {
 int fdsp_movavg_init(fdsp_movavg *m, int len);
 void fdsp_movavg_reset(fdsp_movavg *m);        /* filters/filters.cxx:304-307 */
 double fdsp_movavg_run(fdsp_movavg *m, double a);   /* filters/filters.cxx:273-292 */
+
+/* The same moving average with a heap window of any length, for the windows longer than
+ * FDSP_MOVAVG_MAX that fldigi sets with Cmovavg::setLength (filters/filters.cxx:294-302;
+ * Hellschreiber's AGC average, feld.cxx:236, up to 91428 samples). The window is allocated
+ * in init and nowhere else; run and reset behave exactly as fdsp_movavg_run/_reset. */
+typedef struct fdsp_movavgh {
+    double *in;
+    double out;
+    int len;
+    int pint;
+    int empty;
+} fdsp_movavgh;
+
+/* new Cmovavg + setLength(len), len >= 1. Returns 0, or -1 (bad length, out of memory). */
+int fdsp_movavgh_init(fdsp_movavgh *m, int len);
+void fdsp_movavgh_free(fdsp_movavgh *m);
+void fdsp_movavgh_reset(fdsp_movavgh *m);      /* filters/filters.cxx:304-307 */
+double fdsp_movavgh_run(fdsp_movavgh *m, double a); /* filters/filters.cxx:273-292 */
 
 /* ------------------------------------------------------------------------------------
  * sfft: sliding DFT over len samples for bins first .. last-1 (filters/filters.cxx:402-465),

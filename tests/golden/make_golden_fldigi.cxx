@@ -224,6 +224,23 @@ int main(int argc, char **argv)
         write_file("movavg.f64", out.data(), out.size() * sizeof(double));
     }
 
+    // Cmovavg grown with setLength (feld.cxx:236): lengths 2049 and 11428, 12000 values.
+    {
+        std::vector<double> out;
+        const int lens[2] = {2049, 11428};
+        for (int k = 0; k < 2; k++) {
+            Cmovavg m(200);
+            m.setLength(lens[k]);
+            lcg_state = (uint32_t)(900 + lens[k]);
+            for (int i = 0; i < 12000; i++)
+                out.push_back(m.run(1000.0 * lcg_next()));
+            m.reset();
+            out.push_back(m.run(3.25));
+            out.push_back(m.run(-1.5));
+        }
+        write_file("movavgh.f64", out.data(), out.size() * sizeof(double));
+    }
+
     // sfft: (len, first, last) of THOR8 (1024, 184, 248), THOR16 slow paths (512, 91, 121)
     // and a small one; every step of 3000 LCG samples, stride 3 as THOR's paths use it.
     {
