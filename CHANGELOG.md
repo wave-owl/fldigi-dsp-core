@@ -3,6 +3,12 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.6.1 - 2026-10-18
+
+- The `blackman.f64` golden test compares within 1e-15 off macOS (glibc's `cos()` differs in
+  the last bit of about 5 % of the values); bit for bit with the macOS libm as before. No
+  functional change.
+
 ## 0.6.0 - 2026-10-18
 
 The primitive `fldigi-fsq-core` needs (wave-owl change `add-fldigi-fsq-ifkp-core`).

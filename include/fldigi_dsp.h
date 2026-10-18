@@ -35,8 +35,8 @@ extern "C" {
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
 #define FDSP_VERSION_MINOR 6
-#define FDSP_VERSION_PATCH 0
-#define FDSP_VERSION_STRING "0.6.0"
+#define FDSP_VERSION_PATCH 1
+#define FDSP_VERSION_STRING "0.6.1"
 
 /* "fldigi-dsp-core 0.4.2 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
