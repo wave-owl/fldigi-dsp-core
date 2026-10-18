@@ -3,6 +3,18 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.6.0 - 2026-10-18
+
+The primitive `fldigi-fsq-core` needs (wave-owl change `add-fldigi-fsq-ifkp-core`).
+Additive: the 0.5 API and its results are unchanged.
+
+- `fdsp_blackman`: fldigi's `blackman()` window of `src/include/misc.h:66-69`, with the two
+  multiply-adds fldigi's reference build fuses written out as `fma`, so the window is the
+  same whatever contraction the consumer's build uses (FSQ and IFKP fill their 4096-point
+  FFT window with it, `fsq.cxx:206-207`, `ifkp.cxx:162-163`).
+- Golden data from fldigi's own `blackman()` compiled like the reference build
+  (`blackman.f64`, `tests/golden/make_golden_window.cxx`).
+
 ## 0.5.0 - 2026-10-17
 
 The primitive `fldigi-feldhell-core` needs (wave-owl change `add-fldigi-hellschreiber-core`).

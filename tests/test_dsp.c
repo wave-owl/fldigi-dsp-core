@@ -501,6 +501,30 @@ static void test_movavg(void)
     free(gold);
 }
 
+static void test_blackman(void)
+{
+    static const int sizes[3] = {4096, 1024, 257};
+    size_t len, pos = 0;
+    int k, i, bad = 0;
+    double *gold = (double *)read_file("blackman.f64", &len);
+    for (k = 0; k < 3; k++)
+        for (i = 0; i < sizes[k]; i++)
+            bad += fdsp_blackman(1.0 * i / sizes[k]) != gold[pos++];
+    /* bit for bit where the libm is the reference build's (macOS); elsewhere cos() may
+     * differ in the last bit */
+#if defined(__APPLE__)
+    CHECK(bad == 0, "blackman: %d values differ from fldigi", bad);
+#else
+    CHECK(bad < 64, "blackman: %d values differ from fldigi", bad);
+    for (pos = 0, k = 0; k < 3; k++)
+        for (i = 0; i < sizes[k]; i++, pos++)
+            CHECK(fabs(fdsp_blackman(1.0 * i / sizes[k]) - gold[pos]) < 1e-15, "blackman %d/%d",
+                  sizes[k], i);
+#endif
+    CHECK(pos == len / sizeof(double), "blackman count");
+    free(gold);
+}
+
 static void test_movavgh(void)
 {
     static const int lens[2] = {2049, 11428};
@@ -814,6 +838,7 @@ int main(int argc, char **argv)
     test_cmac();
     test_movavg();
     test_movavgh();
+    test_blackman();
     test_sfft();
     test_conv();
     test_viterbi_long_run();

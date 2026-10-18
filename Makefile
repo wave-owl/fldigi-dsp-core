@@ -63,6 +63,10 @@ golden:
 		$(FLDIGI)/src/mfsk/interleave.cxx $(FLDIGI)/src/mfsk/mfskvaricode.cxx \
 		$(FLDIGI)/src/misc/misc.cxx -o $(BUILD)/make_golden_fldigi
 	$(BUILD)/make_golden_fldigi tests/golden
+	# blackman() of misc.h with FP contraction on, as fldigi's reference build inlines it
+	$(CXX) -std=c++11 -O2 -ffp-contract=on -w -I$(FLDIGI)/src/include \
+		tests/golden/make_golden_window.cxx -o $(BUILD)/make_golden_window
+	$(BUILD)/make_golden_window tests/golden
 
 # Content checksum of the sources a family core links (sorted path list, then each
 # file's bytes): the value recorded in a family core's dsp.lock.

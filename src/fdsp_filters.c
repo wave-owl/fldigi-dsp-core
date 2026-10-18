@@ -56,6 +56,16 @@ int fdsp_parity(unsigned long w)
     return (int)(w & 1);
 }
 
+double fdsp_blackman(double x)
+{
+    /* include/misc.h:66-69: 0.42 - 0.50 * cos(2 * M_PI * x) + 0.08 * cos(4 * M_PI * x),
+     * with the two multiply-adds fldigi's reference build (clang -O2, FP contraction on)
+     * fuses, written out so the result does not depend on this build's contraction. */
+    double c2 = cos(2 * M_PI * x);
+    double c4 = cos(4 * M_PI * x);
+    return fma(0.08, c4, fma(-0.50, c2, 0.42));
+}
+
 void fdsp_sincos(double x, double *s, double *c)
 {
 #if defined(__APPLE__)

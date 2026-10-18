@@ -33,7 +33,7 @@ The scope follows the shared-DSP table of wave-owl's umbrella change
 `add-fldigi-native-modes` (design.md, "fldigi-dsp-core: scope sketch", requirement R-920).
 Version 0.1.0 implemented what the first consumer, `fldigi-olivia-core`, needs; 0.2.0 adds
 what `fldigi-ifk-core` (THOR and DominoEX) needs, 0.4.0 the FIR with own taps, `Irun` and `cmac`
-of `fldigi-throb-core`, 0.5.0 the long moving average of `fldigi-feldhell-core`, 0.3.0 the rate converter of
+of `fldigi-throb-core`, 0.5.0 the long moving average of `fldigi-feldhell-core`, 0.6.0 the Blackman window of `fldigi-fsq-core`, 0.3.0 the rate converter of
 `fldigi-mfsk-core` (MFSK11/22 at the station's 8 kHz). The remaining rows are reserved and get their
 own golden tests when the first family that needs them lands (wave-owl D-926: the first family
 change that needs a primitive adds it here).
@@ -51,6 +51,7 @@ change that needs a primitive adds it here).
 | Circular complex multiply-accumulate (`fdsp_cmac`) | `src/include/complex.h:33-41` | **0.4.0** | Throb (tone correlation) |
 | Moving average (`fdsp_movavg_*`, `Cmovavg`) | `src/filters/filters.cxx:261-307` | **0.2.0** | THOR/DominoEX, Throb; later MFSK, Hellschreiber, FSQ/IFKP |
 | Moving average with a heap window of any length (`fdsp_movavgh_*`, `Cmovavg::setLength`) | `src/filters/filters.cxx:261-307` | **0.5.0** | Hellschreiber (AGC average, up to 91428 samples) |
+| Blackman window (`fdsp_blackman`) | `src/include/misc.h:66-69` | **0.6.0** | FSQ, IFKP (4096-point FFT window) |
 | Sliding DFT (`fdsp_sfft_*`) | `src/filters/filters.cxx:402-465` | **0.2.0** | THOR/DominoEX; later MFSK |
 | Convolutional encoder and soft Viterbi decoder, K <= 15 (`fdsp_encoder_*`, `fdsp_viterbi_*`) | `src/filters/viterbi.cxx:36-257` | **0.2.0** | THOR (K=7, K=15), DominoEX MultiPSK FEC; later MFSK |
 | Block interleaver (`fdsp_interleave_*`) | `src/mfsk/interleave.cxx:34-100` | **0.2.0** | THOR, DominoEX FEC; later MFSK |
@@ -96,6 +97,7 @@ All declarations are in `include/fldigi_dsp.h`.
 | `fdsp_cmpx fdsp_cmac(a, b, ptr, len)` | `complex.h:33-41` | `sum a[i] * b[(ptr + i) % len]`, `ptr` reduced modulo `len` first; complex products never fused (0.4.0). |
 | `fdsp_movavg_init/reset/run` | `filters.cxx:261-307` | `Cmovavg`; the first value fills the window. |
 | `fdsp_movavgh_init/free/reset/run` | `filters.cxx:261-307` | `Cmovavg` grown with `setLength`; heap window of any length, allocated in init. |
+| `double fdsp_blackman(x)` | `misc.h:66-69` | `0.42 - 0.50 cos(2 pi x) + 0.08 cos(4 pi x)` with the reference build's two fused multiply-adds as explicit `fma` (0.6.0). |
 | `fdsp_sfft_init/reset/run/free` | `filters.cxx:402-465` | Sliding DFT over `len` samples for bins `first .. last-1`, damping `K1 = 0.99999999999L`; `run` writes bin `k` to `result[k * stride]`. |
 | `fdsp_encoder_init/encode/free`, `fdsp_viterbi_init/reset/set_traceback/set_chunksize/decode/free` | `viterbi.cxx:36-257` | Rate-1/2 code, K 3..15, soft symbols 0..255 (128 = erasure). `decode` returns the bits of a finished chunk or -1. Path metrics are renormalised on every call (fldigi skips it on traceback calls and overflows after ~8.4 M pairs with chunk size 1); decisions are identical. |
 | `fdsp_interleave_init/flush/symbols/bits/free` | `interleave.cxx:34-100` | `size x size x depth` interleaver, forward (TX, zero-filled) or reverse (RX, erasure-filled). |
@@ -198,6 +200,7 @@ fixed pseudo-random inputs (a 32-bit LCG shared with the C test) and write the r
 | C_FIR_filter: Hilbert 37, low pass 127, band pass 65 with decimation 2, 9000 samples (buffer wraps) | `fir<c>_taps.f64`, `_out.f64` | taps within 1e-16, outputs bit for bit (golden from `filters.cxx` built like fldigi's reference build, see below) |
 | Cmovavg, lengths 8 and 16, with reset | `movavg.f64` | bit for bit |
 | Cmovavg grown with setLength to 2049 and 11428, with reset | `movavgh.f64` | bit for bit |
+| blackman() for 4096, 1024 and 257 points | `blackman.f64` | bit for bit with the macOS libm, within 1e-15 elsewhere (golden from `misc.h` built like fldigi's reference build) |
 | sfft (1024/184..248, 512/91..121, 64/3..20), stride 3, 3000 steps | `sfft<c>.f64`, `_vrot.f64` | rotations within 2^-52 (`long double` K1), bins bit for bit on the golden rotations |
 | Encoder and Viterbi, K=7 (0x6d, 0x4f) and K=15 (044735, 063057), noisy soft symbols with erasures, chunk 1 (traceback 45/180) and 8 | `conv<k>_*.i32`, `conv<k>_sym.u8` | encoder output, decoded bits and metrics exact; plus 9 million clean pairs without error (the overflow case) |
 | Interleaver 4x4x10, 4x4x50, 4x4x4, 5x5x6, symbols both directions and bits | `interleave.u8` | exact |

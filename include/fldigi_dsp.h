@@ -34,9 +34,9 @@ extern "C" {
 /* Version of this library. Family cores pin it (dsp.lock) and refuse to build
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
-#define FDSP_VERSION_MINOR 5
+#define FDSP_VERSION_MINOR 6
 #define FDSP_VERSION_PATCH 0
-#define FDSP_VERSION_STRING "0.5.0"
+#define FDSP_VERSION_STRING "0.6.0"
 
 /* "fldigi-dsp-core 0.4.2 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
@@ -116,6 +116,10 @@ int fdsp_parity(unsigned long w);
  * one sincos call (macOS __sincos, whose last bit can differ from separate sin and cos
  * calls), so the result does not depend on the optimisation level of the build. */
 void fdsp_sincos(double x, double *s, double *c);
+/* blackman, include/misc.h:66-69 (0.6.0): 0.42 - 0.50 cos(2 pi x) + 0.08 cos(4 pi x) with
+ * the two fused multiply-adds of fldigi's reference build (FSQ/IFKP window, fsq.cxx:206-207,
+ * ifkp.cxx:162-163). */
+double fdsp_blackman(double x);
 
 /* ------------------------------------------------------------------------------------
  * Complex FFT of fldigi (src/include/gfft.h, g_fft<double>, John Green's algorithm).
