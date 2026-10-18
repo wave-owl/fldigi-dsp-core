@@ -33,7 +33,7 @@ The scope follows the shared-DSP table of wave-owl's umbrella change
 `add-fldigi-native-modes` (design.md, "fldigi-dsp-core: scope sketch", requirement R-920).
 Version 0.1.0 implemented what the first consumer, `fldigi-olivia-core`, needs; 0.2.0 adds
 what `fldigi-ifk-core` (THOR and DominoEX) needs, 0.4.0 the FIR with own taps, `Irun` and `cmac`
-of `fldigi-throb-core`, 0.5.0 the long moving average of `fldigi-feldhell-core`, 0.6.0 the Blackman window of `fldigi-fsq-core`, 0.3.0 the rate converter of
+of `fldigi-throb-core`, 0.5.0 the long moving average of `fldigi-feldhell-core`, 0.6.0 the Blackman window of `fldigi-fsq-core`, 0.7.0 the RTTY filter shape of `fldigi-navtex-core`, 0.3.0 the rate converter of
 `fldigi-mfsk-core` (MFSK11/22 at the station's 8 kHz). The remaining rows are reserved and get their
 own golden tests when the first family that needs them lands (wave-owl D-926: the first family
 change that needs a primitive adds it here).
@@ -45,7 +45,7 @@ change that needs a primitive adds it here).
 | Gray code (`fdsp_gray_code`, `fdsp_binary_code`) | `src/include/jalocha/pj_gray.h:11-21` | **0.1.0** | Olivia/Contestia |
 | Third-order IIR integrator (`fdsp_lowpass3_*`) | `src/include/jalocha/pj_lowpass3.h:13-41` | **0.1.0** | Olivia/Contestia |
 | Generic complex FFT (`fdsp_gfft_*`, John Green's algorithm) | `src/include/gfft.h:142-2290, 3241-3345` | **0.2.0** (complex only) | THOR/DominoEX via fftfilt; later MT63 (FFT only), FSQ/IFKP |
-| Overlap-add FFT filter (`fdsp_fftfilt_*`: low/high/band-pass, band reject) | `src/filters/fftfilt.cxx:55-237` | **0.2.0** (raised-cosine and RTTY shapes planned) | THOR/DominoEX, Throb; later NAVTEX |
+| Overlap-add FFT filter (`fdsp_fftfilt_*`: low/high/band-pass, band reject) | `src/filters/fftfilt.cxx:55-237` | **0.2.0**; RTTY shape **0.7.0** | THOR/DominoEX, Throb, NAVTEX/SITOR-B |
 | FIR filter and Hilbert (`fdsp_fir_*`, `C_FIR_filter`) | `src/filters/filters.cxx:46-187` | **0.2.0** | THOR/DominoEX, Throb; later FSQ/IFKP |
 | FIR with own taps, I-branch `Irun` (`fdsp_fir_init`, `fdsp_fir_irun`) | `src/filters/filters.cxx:58-84, 193-217` | **0.4.0** | Throb (sync filter) |
 | Circular complex multiply-accumulate (`fdsp_cmac`) | `src/include/complex.h:33-41` | **0.4.0** | Throb (tone correlation) |
@@ -97,6 +97,7 @@ All declarations are in `include/fldigi_dsp.h`.
 | `fdsp_cmpx fdsp_cmac(a, b, ptr, len)` | `complex.h:33-41` | `sum a[i] * b[(ptr + i) % len]`, `ptr` reduced modulo `len` first; complex products never fused (0.4.0). |
 | `fdsp_movavg_init/reset/run` | `filters.cxx:261-307` | `Cmovavg`; the first value fills the window. |
 | `fdsp_movavgh_init/free/reset/run` | `filters.cxx:261-307` | `Cmovavg` grown with `setLength`; heap window of any length, allocated in init. |
+| `fdsp_fftfilt_rtty_filter(f, fc)` | `fftfilt.cxx:243-290` | fldigi's raised-cosine RTTY/NAVTEX shape for `fc` = baud / rate (0.7.0); call after `fdsp_fftfilt_init(f, 0, fc, len)` as fldigi does: `filter[len/2]` keeps the low pass value (fldigi's loop never writes it). |
 | `double fdsp_blackman(x)` | `misc.h:66-69` | `0.42 - 0.50 cos(2 pi x) + 0.08 cos(4 pi x)` with the reference build's two fused multiply-adds as explicit `fma` (0.6.0). |
 | `fdsp_sfft_init/reset/run/free` | `filters.cxx:402-465` | Sliding DFT over `len` samples for bins `first .. last-1`, damping `K1 = 0.99999999999L`; `run` writes bin `k` to `result[k * stride]`. |
 | `fdsp_encoder_init/encode/free`, `fdsp_viterbi_init/reset/set_traceback/set_chunksize/decode/free` | `viterbi.cxx:36-257` | Rate-1/2 code, K 3..15, soft symbols 0..255 (128 = erasure). `decode` returns the bits of a finished chunk or -1. Path metrics are renormalised on every call (fldigi skips it on traceback calls and overflows after ~8.4 M pairs with chunk size 1); decisions are identical. |
@@ -200,6 +201,7 @@ fixed pseudo-random inputs (a 32-bit LCG shared with the C test) and write the r
 | C_FIR_filter: Hilbert 37, low pass 127, band pass 65 with decimation 2, 9000 samples (buffer wraps) | `fir<c>_taps.f64`, `_out.f64` | taps within 1e-16, outputs bit for bit (golden from `filters.cxx` built like fldigi's reference build, see below) |
 | Cmovavg, lengths 8 and 16, with reset | `movavg.f64` | bit for bit |
 | Cmovavg grown with setLength to 2049 and 11428, with reset | `movavgh.f64` | bit for bit |
+| fftfilt + rtty_filter: NAVTEX (100/11025, 512) and RTTY (45.45/8000, 1024), 6000 samples | `fftfilt_rtty<c>_shape.f64`, `_out.f64` | shape bit for bit with the macOS libm except `filter[len/2]` (within 1e-14), every output block bit for bit on the golden shape |
 | blackman() for 4096, 1024 and 257 points | `blackman.f64` | bit for bit with the macOS libm, within 1e-15 elsewhere (golden from `misc.h` built like fldigi's reference build) |
 | sfft (1024/184..248, 512/91..121, 64/3..20), stride 3, 3000 steps | `sfft<c>.f64`, `_vrot.f64` | rotations within 2^-52 (`long double` K1), bins bit for bit on the golden rotations |
 | Encoder and Viterbi, K=7 (0x6d, 0x4f) and K=15 (044735, 063057), noisy soft symbols with erasures, chunk 1 (traceback 45/180) and 8 | `conv<k>_*.i32`, `conv<k>_sym.u8` | encoder output, decoded bits and metrics exact; plus 9 million clean pairs without error (the overflow case) |

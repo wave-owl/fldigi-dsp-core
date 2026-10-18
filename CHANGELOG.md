@@ -3,6 +3,19 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.7.0 - 2026-10-18
+
+The primitive `fldigi-navtex-core` needs (wave-owl change `add-fldigi-navtex-core`).
+Additive: the 0.6 API and its results are unchanged.
+
+- `fdsp_fftfilt_rtty_filter`: fldigi's raised-cosine RTTY filter shape of
+  `src/filters/fftfilt.cxx:243-290` (`f *= 1.4`, cos^2 response equalised by 1 / sinc, linear
+  phase -i pi / 2), the mark and space low passes of the NAVTEX/SITOR-B receiver
+  (`navtex.cxx:998-1005`). Like fldigi it leaves `filter[flen2]` at the value of the previous
+  shape, and evaluates each cos/sin pair with one `sincos` call as the reference build does.
+- Golden data from fldigi's own `fftfilt::rtty_filter` (`fftfilt_rtty0/1_shape.f64`,
+  `_out.f64`).
+
 ## 0.6.1 - 2026-10-18
 
 - The `blackman.f64` golden test compares within 1e-15 off macOS (glibc's `cos()` differs in

@@ -34,9 +34,9 @@ extern "C" {
 /* Version of this library. Family cores pin it (dsp.lock) and refuse to build
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
-#define FDSP_VERSION_MINOR 6
-#define FDSP_VERSION_PATCH 1
-#define FDSP_VERSION_STRING "0.6.1"
+#define FDSP_VERSION_MINOR 7
+#define FDSP_VERSION_PATCH 0
+#define FDSP_VERSION_STRING "0.7.0"
 
 /* "fldigi-dsp-core 0.4.2 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
@@ -166,6 +166,13 @@ void fdsp_fftfilt_create(fdsp_fftfilt *f, double f1, double f2);
 /* run, filters/fftfilt.cxx:202-237: one input sample; returns flen2 when a block of output is
  * ready in *out (valid until the next call), else 0. */
 int fdsp_fftfilt_run(fdsp_fftfilt *f, fdsp_cmpx in, const fdsp_cmpx **out);
+/* rtty_filter, filters/fftfilt.cxx:243-290 (0.7.0): replace the shape by fldigi's raised-cosine
+ * RTTY/NAVTEX matched filter for fc = baud / sample rate (scaled by 1.4 inside, as fldigi
+ * does). filter[flen2] keeps the previous shape's value (fldigi's loop never writes it), so
+ * call it after fdsp_fftfilt_init(f, 0, fc, len) exactly as fldigi constructs the filter
+ * (`new fftfilt(fc, len)` then `rtty_filter(fc)`, navtex.cxx:998-1005). Restarts the two-pass
+ * warm-up; the time data and overlap are not cleared. */
+void fdsp_fftfilt_rtty_filter(fdsp_fftfilt *f, double fc);
 
 /* ------------------------------------------------------------------------------------
  * C_FIR_filter (src/filters/filters.cxx:46-187, src/include/filters.h:40-110).

@@ -56,6 +56,7 @@ static void put_c(std::vector<double> &v, const cmplx &z)
 // Access to the protected/private state the C tests inject (tables computed with libm).
 struct fftfilt_peek : public fftfilt {
     fftfilt_peek(double f1, double f2, int len) : fftfilt(f1, f2, len) {}
+    fftfilt_peek(double f, int len) : fftfilt(f, len) {}
     const cmplx *shape() const { return filter; }
 };
 
@@ -119,6 +120,33 @@ int main(int argc, char **argv)
             snprintf(name, sizeof name, "fftfilt%d_shape.f64", c);
             write_file(name, shape.data(), shape.size() * sizeof(double));
             snprintf(name, sizeof name, "fftfilt%d_out.f64", c);
+            write_file(name, out.data(), out.size() * sizeof(double));
+        }
+    }
+
+    // fftfilt::rtty_filter (0.7.0): NAVTEX's mark/space low passes (navtex.cxx:998-1005,
+    // fftfilt(100/11025, 512) then rtty_filter(100/11025)) and an RTTY 45.45 Bd shape at
+    // 8000 Hz, 1024 points; 6000 LCG input samples, outputs of every completed block.
+    {
+        const double cases[][2] = {{100.0 / 11025.0, 512}, {45.45 / 8000.0, 1024}};
+        for (int c = 0; c < 2; c++) {
+            int len = (int)cases[c][1];
+            fftfilt_peek f(cases[c][0], len);
+            f.rtty_filter(cases[c][0]);
+            std::vector<double> shape, out;
+            for (int i = 0; i < len; i++)
+                put_c(shape, f.shape()[i]);
+            lcg_state = (uint32_t)(177 + c);
+            for (int i = 0; i < 6000; i++) {
+                cmplx *zp;
+                double re = lcg_next(), im = lcg_next();
+                int n = f.run(cmplx(re, im), &zp);
+                for (int k = 0; k < n; k++)
+                    put_c(out, zp[k]);
+            }
+            snprintf(name, sizeof name, "fftfilt_rtty%d_shape.f64", c);
+            write_file(name, shape.data(), shape.size() * sizeof(double));
+            snprintf(name, sizeof name, "fftfilt_rtty%d_out.f64", c);
             write_file(name, out.data(), out.size() * sizeof(double));
         }
     }

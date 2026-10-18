@@ -211,6 +211,39 @@ int fdsp_fftfilt_run(fdsp_fftfilt *f, fdsp_cmpx in, const fdsp_cmpx **out)
     return f->flen2;
 }
 
+static double ff_sinc(double x)
+{
+    /* sinc, include/misc.h:43-46 */
+    return (fabs(x) < 1e-10) ? 1.0 : (sin(M_PI * x) / (M_PI * x));
+}
+
+void fdsp_fftfilt_rtty_filter(fdsp_fftfilt *f, double fc)
+{
+    /* rtty_filter, filters/fftfilt.cxx:243-290: raised-cosine (cos^2) response, amplitude
+     * equalised by 1 / sinc, with a linear phase of -i * pi / 2. Overwrites filter[0 ..
+     * flen2 - 1] and filter[flen2 + 1 .. flen - 1]; filter[flen2] keeps the value of the
+     * previous shape (fldigi's quirk: the loop never reaches it). The cos/sin pairs of one
+     * argument are one sincos call each, as fldigi's reference build evaluates them. */
+    int i;
+    double dht, x, s, c;
+    fc *= 1.4;
+    for (i = 0; i < f->flen2; ++i) {
+        x = (double)i / (double)(f->flen2);
+        dht = x <= 0 ? 1.0 :
+              x > 2.0 * fc ? 0.0 :
+              cos((M_PI * x) / (fc * 4.0));
+        dht *= dht;
+        dht /= ff_sinc(2.0 * i * fc);
+        fdsp_sincos((double)i * -0.5 * M_PI, &s, &c);
+        f->filter[i].re = dht * c;
+        f->filter[i].im = dht * s;
+        fdsp_sincos((double)i * +0.5 * M_PI, &s, &c);
+        f->filter[(f->flen - i) % f->flen].re = dht * c;
+        f->filter[(f->flen - i) % f->flen].im = dht * s;
+    }
+    f->pass = 1;
+}
+
 /* ---------------------------------------------------------------------------------- */
 /* C_FIR_filter, filters/filters.cxx:46-187, include/filters.h:40-110                                 */
 /* ---------------------------------------------------------------------------------- */

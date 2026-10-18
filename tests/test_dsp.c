@@ -363,6 +363,74 @@ static void test_fftfilt(void)
     free(utbl);
 }
 
+static void test_fftfilt_rtty(void)
+{
+    /* 0.7.0: fftfilt(fc, len) + rtty_filter(fc) as NAVTEX builds its mark/space filters.
+     * The shape is bit for bit with the macOS libm except filter[flen2], which keeps the
+     * low pass of create_filter (fused in fldigi's reference build, so within 1e-14 like
+     * test_fftfilt); off macOS (another libm) everything within 1e-14. The outputs are bit
+     * for bit with the golden shape and FFT table injected, as in test_fftfilt. */
+    static const double cases[2][2] = {{100.0 / 11025.0, 512}, {45.45 / 8000.0, 1024}};
+    int c, i, k;
+    size_t len, pos;
+    char name[64];
+    for (c = 0; c < 2; c++) {
+        fdsp_fftfilt f;
+        double *shape, *gold, *utbl;
+        size_t glen;
+        int flen = (int)cases[c][1];
+        int exact = 1, close = 1;
+        CHECK(fdsp_fftfilt_init(&f, 0, cases[c][0], flen) == 0, "fftfilt rtty init");
+        fdsp_fftfilt_rtty_filter(&f, cases[c][0]);
+        CHECK(f.pass == 1, "fftfilt rtty pass");
+        snprintf(name, sizeof name, "fftfilt_rtty%d_shape.f64", c);
+        shape = (double *)read_file(name, &len);
+        CHECK(len == (size_t)flen * 2 * sizeof(double), "fftfilt rtty shape size %d", c);
+        for (i = 0; i < 2 * flen; i++) {
+            double g = shape[i], v = ((const double *)f.filter)[i];
+            if (i / 2 != flen / 2 && g != v)
+                exact = 0;
+            if (fabs(g - v) > 1e-14)
+                close = 0;
+        }
+#if defined(__APPLE__)
+        CHECK(exact, "fftfilt rtty shape %d bit for bit", c);
+#else
+        (void)exact;
+#endif
+        CHECK(close, "fftfilt rtty shape %d within 1e-14", c);
+        memcpy(f.filter, shape, len);
+        snprintf(name, sizeof name, "gfft%d_utbl.f64", flen);
+        utbl = (double *)read_file(name, &len);
+        memcpy(f.fft.utbl, utbl, (size_t)(flen / 4 + 1) * sizeof(double));
+        snprintf(name, sizeof name, "fftfilt_rtty%d_out.f64", c);
+        gold = (double *)read_file(name, &glen);
+        lcg_state = (uint32_t)(177 + c);
+        pos = 0;
+        for (i = 0; i < 6000; i++) {
+            const fdsp_cmpx *zp = NULL;
+            fdsp_cmpx in;
+            int n;
+            in.re = lcg_next();
+            in.im = lcg_next();
+            n = fdsp_fftfilt_run(&f, in, &zp);
+            for (k = 0; k < n; k++, pos += 2) {
+                if (pos + 1 >= glen / sizeof(double) ||
+                    gold[pos] != zp[k].re || gold[pos + 1] != zp[k].im) {
+                    CHECK(0, "fftfilt rtty %d sample %zu", c, pos / 2);
+                    i = 6000;
+                    break;
+                }
+            }
+        }
+        CHECK(pos == glen / sizeof(double), "fftfilt rtty %d output count %zu", c, pos);
+        free(shape);
+        free(gold);
+        free(utbl);
+        fdsp_fftfilt_free(&f);
+    }
+}
+
 static void test_fir(void)
 {
     int c, i;
@@ -834,6 +902,7 @@ int main(int argc, char **argv)
     test_lowpass3();
     test_gfft();
     test_fftfilt();
+    test_fftfilt_rtty();
     test_fir();
     test_fir_irun();
     test_cmac();
