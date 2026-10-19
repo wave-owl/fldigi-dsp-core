@@ -229,21 +229,44 @@ int fdsp_viterbi_decode(fdsp_viterbi *v, const unsigned char sym[2], int *metric
     prev = VROW(v, prevptr);
     his = v->history;
     base = (size_t)currptr * (size_t)v->nstates;
-    for (n = 0; n < v->nstates; n++) {
-        int p0, p1, s0, s1, m0, m1;
-        size_t bit = base + (size_t)n;
-        s0 = n;
-        s1 = n + v->nstates;
-        p0 = s0 >> 1;
-        p1 = s1 >> 1;
-        m0 = prev[p0] + met[v->output[s0]];
-        m1 = prev[p1] + met[v->output[s1]];
-        if (m0 > m1) {
-            cur[n] = m0;
-            his[bit >> 5] &= ~((uint32_t)1 << (bit & 31u));
-        } else {
-            cur[n] = m1;
-            his[bit >> 5] |= (uint32_t)1 << (bit & 31u);
+    if ((v->nstates & 31) == 0) {
+        /* whole 32-bit words of decisions (k >= 6) */
+        const int *out0 = v->output, *out1 = v->output + v->nstates;
+        const int *prev1 = prev + v->nstates / 2;
+        uint32_t *w = his + (base >> 5);
+        int n0, j;
+        for (n0 = 0; n0 < v->nstates; n0 += 32) {
+            uint32_t word = 0;
+            for (j = 0; j < 32; j++) {
+                int nn = n0 + j;
+                int m0 = prev[nn >> 1] + met[out0[nn]];
+                int m1 = prev1[nn >> 1] + met[out1[nn]];
+                if (m0 > m1) {
+                    cur[nn] = m0;
+                } else {
+                    cur[nn] = m1;
+                    word |= (uint32_t)1 << j;
+                }
+            }
+            w[n0 >> 5] = word;
+        }
+    } else {
+        for (n = 0; n < v->nstates; n++) {
+            int p0, p1, s0, s1, m0, m1;
+            size_t bit = base + (size_t)n;
+            s0 = n;
+            s1 = n + v->nstates;
+            p0 = s0 >> 1;
+            p1 = s1 >> 1;
+            m0 = prev[p0] + met[v->output[s0]];
+            m1 = prev[p1] + met[v->output[s1]];
+            if (m0 > m1) {
+                cur[n] = m0;
+                his[bit >> 5] &= ~((uint32_t)1 << (bit & 31u));
+            } else {
+                cur[n] = m1;
+                his[bit >> 5] |= (uint32_t)1 << (bit & 31u);
+            }
         }
     }
     if (v->filled < FDSP_VITERBI_PATHMEM)

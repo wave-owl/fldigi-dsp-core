@@ -3,6 +3,12 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.9.2 - 2026-10-19
+
+- `fdsp_viterbi_decode` collects the decisions of 32 states in one word before storing
+  them (k >= 6). K=16 decodes about 3.9 times faster than 0.9.1 and 1.5 times faster than
+  the 0.8 layout; results unchanged (all `conv*` goldens).
+
 ## 0.9.1 - 2026-10-19
 
 - The K=16 footprint check of the tests expects the real figure, 1.5 MB (output table
