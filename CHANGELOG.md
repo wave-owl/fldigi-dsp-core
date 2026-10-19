@@ -3,6 +3,18 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.8.0 - 2026-10-19
+
+The FEC range `fldigi-psk-core` needs for fldigi's PSK variants (wave-owl change
+`add-fldigi-psk-variants`). Additive: the 0.7 API and its results are unchanged.
+
+- `fdsp_viterbi_init` and `fdsp_encoder_init` accept constraint length 16 (fldigi's `K16`
+  code of 8PSK125F/8PSK250F, `src/psk/psk.cxx:91-94`, 996-1001); fldigi's `viterbi` class
+  has no upper limit, the port stopped at 15.
+- Golden data from fldigi's own `encoder`/`viterbi` for K=5 (QPSK, `psk.cxx:66-68`), K=13
+  (8PSK FL/500F and xPSK, `psk.cxx:83-85`, traceback 13 x 16) and K=16 (traceback 16 x 12),
+  chunk size 1 with metrics and chunk size 8.
+
 ## 0.7.0 - 2026-10-18
 
 The primitive `fldigi-navtex-core` needs (wave-owl change `add-fldigi-navtex-core`).

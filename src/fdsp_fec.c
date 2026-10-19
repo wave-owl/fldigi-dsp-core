@@ -48,7 +48,7 @@ int fdsp_viterbi_init(fdsp_viterbi *v, int k, int poly1, int poly2)
     if (!v)
         return -1;
     memset(v, 0, sizeof *v);
-    if (k < 3 || k > 15)
+    if (k < 3 || k > 16)
         return -1;
     v->outsize = 1 << k;
     v->nstates = 1 << (k - 1);
@@ -205,7 +205,7 @@ int fdsp_encoder_init(fdsp_encoder *e, int k, int poly1, int poly2)
     if (!e)
         return -1;
     memset(e, 0, sizeof *e);
-    if (k < 3 || k > 15)
+    if (k < 3 || k > 16)
         return -1;
     size = 1 << k;
     e->output = (int *)malloc((size_t)size * sizeof(int));

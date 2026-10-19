@@ -674,13 +674,15 @@ static void test_sfft(void)
 
 static void test_conv(void)
 {
-    static const int ks[2][3] = {{7, 0x6d, 0x4f}, {15, 044735, 063057}};
+    static const int ks[5][4] = {{7, 0x6d, 0x4f, 45}, {15, 044735, 063057, 180},
+                                 {5, 0x17, 0x19, 60}, {13, 016461, 012767, 208},
+                                 {16, 0152711, 0126723, 192}};
     int c, i;
     size_t len;
     char name[64];
     fdsp_viterbi bad;
-    CHECK(fdsp_viterbi_init(&bad, 16, 1, 1) < 0, "viterbi k 16 accepted");
-    for (c = 0; c < 2; c++) {
+    CHECK(fdsp_viterbi_init(&bad, 17, 1, 1) < 0, "viterbi k 17 accepted");
+    for (c = 0; c < 5; c++) {
         fdsp_encoder enc;
         fdsp_viterbi v1, v8;
         int32_t *codes, *dec1, *met1, *dec8;
@@ -705,7 +707,7 @@ static void test_conv(void)
         snprintf(name, sizeof name, "conv%d_dec8.i32", k);
         dec8 = (int32_t *)read_file(name, &len);
         CHECK(fdsp_viterbi_init(&v1, k, ks[c][1], ks[c][2]) == 0, "viterbi init");
-        CHECK(fdsp_viterbi_set_traceback(&v1, c == 0 ? 45 : 180) == 0, "traceback");
+        CHECK(fdsp_viterbi_set_traceback(&v1, ks[c][3]) == 0, "traceback");
         CHECK(fdsp_viterbi_set_chunksize(&v1, 1) == 0, "chunksize");
         CHECK(fdsp_viterbi_init(&v8, k, ks[c][1], ks[c][2]) == 0, "viterbi init 8");
         for (i = 0; i < 4000; i++) {

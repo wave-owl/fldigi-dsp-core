@@ -303,12 +303,15 @@ int main(int argc, char **argv)
         }
     }
 
-    // Convolutional code: K=7 (THOR, MFSK, DominoEX FEC) and K=15 (THOR 25/50/100).
+    // Convolutional code: K=7 (THOR, MFSK, DominoEX FEC, PSK-R), K=15 (THOR 25/50/100,
+    // OFDM-500F), and since 0.8.0 K=5 (QPSK), K=13 (8PSK FL/500F) and K=16 (8PSK125F/250F).
     // Encoder output for 4000 LCG bits; decoder over noisy soft symbols with erasures,
-    // traceback 45 / 180, chunk size 1 (outputs and metrics), then chunk size 8.
+    // traceback ks[c][3], chunk size 1 (outputs and metrics), then chunk size 8.
     {
-        const int ks[][3] = {{7, 0x6d, 0x4f}, {15, 044735, 063057}};
-        for (int c = 0; c < 2; c++) {
+        const int ks[][4] = {{7, 0x6d, 0x4f, 45}, {15, 044735, 063057, 15 * 12},
+                             {5, 0x17, 0x19, 5 * 12}, {13, 016461, 012767, 13 * 16},
+                             {16, 0152711, 0126723, 16 * 12}};
+        for (int c = 0; c < 5; c++) {
             encoder enc(ks[c][0], ks[c][1], ks[c][2]);
             std::vector<int32_t> codes, dec1, met1, dec8;
             std::vector<unsigned char> sym;
@@ -326,7 +329,7 @@ int main(int argc, char **argv)
                 }
             }
             viterbi v1(ks[c][0], ks[c][1], ks[c][2]);
-            v1.settraceback(c == 0 ? 45 : 15 * 12);
+            v1.settraceback(ks[c][3]);
             v1.setchunksize(1);
             for (int i = 0; i < 4000; i++) {
                 int met = 0;

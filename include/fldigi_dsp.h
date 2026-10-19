@@ -34,9 +34,9 @@ extern "C" {
 /* Version of this library. Family cores pin it (dsp.lock) and refuse to build
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
-#define FDSP_VERSION_MINOR 7
+#define FDSP_VERSION_MINOR 8
 #define FDSP_VERSION_PATCH 0
-#define FDSP_VERSION_STRING "0.7.0"
+#define FDSP_VERSION_STRING "0.8.0"
 
 /* "fldigi-dsp-core 0.4.2 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
@@ -276,7 +276,7 @@ void fdsp_sfft_run(fdsp_sfft *s, fdsp_cmpx input, fdsp_cmpx *result, int stride)
 
 /* ------------------------------------------------------------------------------------
  * Convolutional code (src/filters/viterbi.cxx, src/include/viterbi.h): rate 1/2,
- * constraint length k <= 15, soft symbols 0 .. 255 (128 = erasure).
+ * constraint length k <= 16, soft symbols 0 .. 255 (128 = erasure).
  * ------------------------------------------------------------------------------------ */
 #define FDSP_VITERBI_PATHMEM 256    /* PATHMEM, include/viterbi.h:28 */
 typedef struct fdsp_viterbi {
@@ -296,7 +296,7 @@ typedef struct fdsp_viterbi {
 } fdsp_viterbi;
 
 /* viterbi(k, poly1, poly2) + init(), filters/viterbi.cxx:36-82. Returns 0, or -1 (k outside
- * 3 .. 15, out of memory; zeroed). Default traceback k * 12, chunk size 8. */
+ * 3 .. 16, out of memory; zeroed). Default traceback k * 12, chunk size 8. */
 int fdsp_viterbi_init(fdsp_viterbi *v, int k, int poly1, int poly2);
 void fdsp_viterbi_free(fdsp_viterbi *v);
 void fdsp_viterbi_reset(fdsp_viterbi *v);              /* filters/viterbi.cxx:85-92 */
