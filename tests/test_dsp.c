@@ -735,7 +735,7 @@ static void test_conv(void)
     {
         fdsp_viterbi v16;
         CHECK(fdsp_viterbi_init(&v16, 16, 0152711, 0126723) == 0, "viterbi k 16");
-        CHECK(fdsp_viterbi_footprint(&v16) < 1400000, "viterbi k 16 footprint %zu",
+        CHECK(fdsp_viterbi_footprint(&v16) < 1600000, "viterbi k 16 footprint %zu",
               fdsp_viterbi_footprint(&v16));
         fdsp_viterbi_free(&v16);
     }

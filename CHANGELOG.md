@@ -3,6 +3,12 @@
 All notable changes to fldigi-dsp-core. Versions follow semantic versioning; the contract
 tag `dsp-c1` changes only with an incompatible API change.
 
+## 0.9.1 - 2026-10-19
+
+- The K=16 footprint check of the tests expects the real figure, 1.5 MB (output table
+  256 kB, two metric rows 256 kB, decision bits 1 MB); 0.9.0 checked against 1.4 MB and
+  failed. No change in the library.
+
 ## 0.9.0 - 2026-10-19
 
 Memory for the PSK variants core (wave-owl change `add-fldigi-psk-variants`, R-931.6). The
@@ -12,7 +18,7 @@ API is extended; every result is unchanged.
   PATHMEM x 2^(k-1) int tables: two path-metric rows, one decision bit per state and step and
   the four branch metrics of every step. The metric difference of a traceback is the sum of
   the branch metrics along the traced path (what fldigi's two table reads amount to); rows
-  not written since the reset behave as fldigi's zeroed rows. K=16 needs about 1.3 MB instead
+  not written since the reset behave as fldigi's zeroed rows. K=16 needs about 1.5 MB instead
   of 64 MB, K=13 160 kB instead of 8 MB. All `conv*` goldens (K=5, 7, 13, 15, 16) and the
   9-million-pair run pass unchanged. `fdsp_viterbi_footprint` reports the allocation. The
   struct fields `metrics`/`history` change meaning (family cores do not read them).

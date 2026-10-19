@@ -35,8 +35,8 @@ extern "C" {
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
 #define FDSP_VERSION_MINOR 9
-#define FDSP_VERSION_PATCH 0
-#define FDSP_VERSION_STRING "0.9.0"
+#define FDSP_VERSION_PATCH 1
+#define FDSP_VERSION_STRING "0.9.1"
 
 /* "fldigi-dsp-core 0.4.2 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
@@ -334,7 +334,7 @@ int fdsp_viterbi_set_chunksize(fdsp_viterbi *v, int c);  /* filters/viterbi.cxx:
  * the path metric difference in *metric when not NULL) or -1 while none is ready. */
 int fdsp_viterbi_decode(fdsp_viterbi *v, const unsigned char sym[2], int *metric);
 /* Bytes allocated by fdsp_viterbi_init (0.9.0: two metric rows, one decision bit per state
- * and step, four branch metrics per step; about 1.3 MB for K=16 instead of fldigi's 64 MB,
+ * and step, four branch metrics per step; about 1.5 MB for K=16 instead of fldigi's 64 MB,
  * with identical results). */
 size_t fdsp_viterbi_footprint(const fdsp_viterbi *v);
 
