@@ -476,6 +476,56 @@ static void test_fir(void)
     }
 }
 
+/* fdsp_firh: fldigi's goldens with buffers of length + 1, length + 7 and the default; clear
+ * gives the fresh state (0.9.0). */
+static void test_firh(void)
+{
+    int c, b, i, pass;
+    size_t len, glen, pos;
+    char name[64];
+    for (c = 0; c < 3; c++) {
+        int flen = c == 0 ? 37 : c == 1 ? 127 : 65, dec = c == 2 ? 2 : 1;
+        double *taps, *gold;
+        snprintf(name, sizeof name, "fir%d_taps.f64", c);
+        taps = (double *)read_file(name, &len);
+        snprintf(name, sizeof name, "fir%d_out.f64", c);
+        gold = (double *)read_file(name, &glen);
+        for (b = 0; b < 3; b++) {
+            fdsp_firh f;
+            int buflen = b == 0 ? flen + 1 : b == 1 ? flen + 7 : 0;
+            CHECK(fdsp_firh_init(&f, flen, dec, taps, taps + flen, buflen) == 0,
+                  "firh init %d/%d", c, b);
+            for (pass = 0; pass < 2; pass++) {
+                lcg_state = (uint32_t)(300 + c);
+                pos = 0;
+                for (i = 0; i < 9000; i++) {
+                    fdsp_cmpx in, out;
+                    in.re = lcg_next();
+                    in.im = lcg_next();
+                    if (fdsp_firh_run(&f, in, &out)) {
+                        if (gold[pos] != out.re || gold[pos + 1] != out.im) {
+                            CHECK(0, "firh %d/%d output %zu (pass %d)", c, b, pos / 2, pass);
+                            break;
+                        }
+                        pos += 2;
+                    }
+                }
+                CHECK(pos == glen / sizeof(double), "firh %d/%d output count", c, b);
+                fdsp_firh_clear(&f);
+            }
+            fdsp_firh_free(&f);
+        }
+        free(taps);
+        free(gold);
+    }
+    {
+        fdsp_firh f;
+        double t[3] = {1, 2, 3};
+        CHECK(fdsp_firh_init(&f, 3, 1, t, t, 3) == -1, "firh buflen <= len");
+        CHECK(fdsp_firh_init(&f, 3, 1, t, NULL, 8) == -1, "firh without Q taps");
+    }
+}
+
 static void test_fir_irun(void)
 {
     int c, i;
@@ -682,6 +732,13 @@ static void test_conv(void)
     char name[64];
     fdsp_viterbi bad;
     CHECK(fdsp_viterbi_init(&bad, 17, 1, 1) < 0, "viterbi k 17 accepted");
+    {
+        fdsp_viterbi v16;
+        CHECK(fdsp_viterbi_init(&v16, 16, 0152711, 0126723) == 0, "viterbi k 16");
+        CHECK(fdsp_viterbi_footprint(&v16) < 1400000, "viterbi k 16 footprint %zu",
+              fdsp_viterbi_footprint(&v16));
+        fdsp_viterbi_free(&v16);
+    }
     for (c = 0; c < 5; c++) {
         fdsp_encoder enc;
         fdsp_viterbi v1, v8;
@@ -906,6 +963,7 @@ int main(int argc, char **argv)
     test_fftfilt();
     test_fftfilt_rtty();
     test_fir();
+    test_firh();
     test_fir_irun();
     test_cmac();
     test_movavg();

@@ -34,9 +34,9 @@ extern "C" {
 /* Version of this library. Family cores pin it (dsp.lock) and refuse to build
  * against a different version or file checksum (wave-owl R-920.3, INV-920). */
 #define FDSP_VERSION_MAJOR 0
-#define FDSP_VERSION_MINOR 8
+#define FDSP_VERSION_MINOR 9
 #define FDSP_VERSION_PATCH 0
-#define FDSP_VERSION_STRING "0.8.0"
+#define FDSP_VERSION_STRING "0.9.0"
 
 /* "fldigi-dsp-core 0.4.2 contract=dsp-c1 abi=1". Static string. */
 const char *fdsp_version(void);
@@ -209,6 +209,32 @@ int fdsp_fir_init(fdsp_fir *f, int len, int dec, const double *itaps, const doub
  * (decimated) output. Shares the buffer and the counters with fdsp_fir_run. */
 int fdsp_fir_irun(fdsp_fir *f, double in, double *out);
 
+/* The same filter with heap buffers of buflen samples (0.9.0; buflen 0 = FDSP_FIR_BUFLEN,
+ * else buflen > len). fldigi's buffer length only decides how often the history is moved to
+ * the front, so the outputs equal fdsp_fir's for every buflen; a short buffer keeps a
+ * filter at a few kB instead of 64 kB (32-carrier PSK modes). */
+typedef struct fdsp_firh {
+    int length;
+    int decimateratio;
+    int buflen;
+    double *ifilter;
+    double *qfilter;
+    double *ibuffer;
+    double *qbuffer;
+    int pointer;
+    int counter;
+} fdsp_firh;
+
+/* init with the caller's taps (filters.cxx:58-84). Returns 0, or -1 (len < 1, dec < 1,
+ * buflen <= len, NULL taps, out of memory; *f is then zeroed). */
+int fdsp_firh_init(fdsp_firh *f, int len, int dec, const double *itaps, const double *qtaps,
+                   int buflen);
+void fdsp_firh_free(fdsp_firh *f);
+/* Back to the state after init (buffers zero, taps kept); no allocation. */
+void fdsp_firh_clear(fdsp_firh *f);
+/* run, filters/filters.cxx:168-187: returns 1 when *out holds a (decimated) output. */
+int fdsp_firh_run(fdsp_firh *f, fdsp_cmpx in, fdsp_cmpx *out);
+
 /* ------------------------------------------------------------------------------------
  * cmac (0.4.0): circular complex multiply-accumulate of include/complex.h:33-41:
  * sum over i of a[i] * b[(ptr + i) % len], ptr taken modulo len first; the complex
@@ -288,8 +314,10 @@ typedef struct fdsp_viterbi {
     int poly1;
     int poly2;
     int *output;            /* outsize entries */
-    int *metrics;           /* PATHMEM x nstates */
-    int *history;           /* PATHMEM x nstates */
+    int *metrics;           /* 2 x nstates: path metrics of the previous and current step */
+    uint32_t *history;      /* PATHMEM x nstates bits: 1 = predecessor (s + nstates) >> 1 */
+    int *branch;            /* PATHMEM x 4: the branch metrics met[] of every step */
+    unsigned int filled;    /* rows written since the last reset (at most PATHMEM) */
     int sequence[FDSP_VITERBI_PATHMEM];
     int mettab[2][256];
     unsigned int ptr;
@@ -305,6 +333,10 @@ int fdsp_viterbi_set_chunksize(fdsp_viterbi *v, int c);  /* filters/viterbi.cxx:
 /* decode, filters/viterbi.cxx:154-214: one symbol pair; returns the decoded bits of a chunk (and
  * the path metric difference in *metric when not NULL) or -1 while none is ready. */
 int fdsp_viterbi_decode(fdsp_viterbi *v, const unsigned char sym[2], int *metric);
+/* Bytes allocated by fdsp_viterbi_init (0.9.0: two metric rows, one decision bit per state
+ * and step, four branch metrics per step; about 1.3 MB for K=16 instead of fldigi's 64 MB,
+ * with identical results). */
+size_t fdsp_viterbi_footprint(const fdsp_viterbi *v);
 
 typedef struct fdsp_encoder {
     int *output;

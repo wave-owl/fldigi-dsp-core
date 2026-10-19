@@ -442,6 +442,84 @@ int fdsp_fir_run(fdsp_fir *f, fdsp_cmpx in, fdsp_cmpx *out)
     return 0;
 }
 
+/* C_FIR_filter with a heap buffer of any length (0.9.0). fldigi's FIRBufferLen only decides
+ * how often the last `length` inputs are moved to the front (filters.cxx:180-185); the
+ * outputs depend on those inputs alone, so any buflen > length gives fldigi's results. */
+int fdsp_firh_init(fdsp_firh *f, int len, int dec, const double *itaps, const double *qtaps,
+                   int buflen)
+{
+    if (!f)
+        return -1;
+    memset(f, 0, sizeof *f);
+    if (buflen == 0)
+        buflen = FDSP_FIR_BUFLEN;
+    if (!itaps || !qtaps || len < 1 || dec < 1 || buflen <= len)
+        return -1;
+    f->length = len;
+    f->decimateratio = dec;
+    f->buflen = buflen;
+    f->ifilter = (double *)malloc((size_t)len * sizeof(double));
+    f->qfilter = (double *)malloc((size_t)len * sizeof(double));
+    f->ibuffer = (double *)calloc((size_t)buflen, sizeof(double));
+    f->qbuffer = (double *)calloc((size_t)buflen, sizeof(double));
+    if (!f->ifilter || !f->qfilter || !f->ibuffer || !f->qbuffer) {
+        fdsp_firh_free(f);
+        return -1;
+    }
+    memcpy(f->ifilter, itaps, (size_t)len * sizeof(double));
+    memcpy(f->qfilter, qtaps, (size_t)len * sizeof(double));
+    f->pointer = len;
+    f->counter = 0;
+    return 0;
+}
+
+void fdsp_firh_free(fdsp_firh *f)
+{
+    if (!f)
+        return;
+    free(f->ifilter);
+    free(f->qfilter);
+    free(f->ibuffer);
+    free(f->qbuffer);
+    memset(f, 0, sizeof *f);
+}
+
+void fdsp_firh_clear(fdsp_firh *f)
+{
+    /* the state after init, filters.cxx:58-84; taps kept */
+    memset(f->ibuffer, 0, (size_t)f->buflen * sizeof(double));
+    memset(f->qbuffer, 0, (size_t)f->buflen * sizeof(double));
+    f->pointer = f->length;
+    f->counter = 0;
+}
+
+int fdsp_firh_run(fdsp_firh *f, fdsp_cmpx in, fdsp_cmpx *out)
+{
+    /* run, filters/filters.cxx:168-187 */
+    f->ibuffer[f->pointer] = in.re;
+    f->qbuffer[f->pointer] = in.im;
+    f->counter++;
+    if (f->counter == f->decimateratio) {
+        out->re = fir_mac(&f->ibuffer[f->pointer - f->length], f->ifilter,
+                          (unsigned int)f->length);
+        out->im = fir_mac(&f->qbuffer[f->pointer - f->length], f->qfilter,
+                          (unsigned int)f->length);
+    }
+    f->pointer++;
+    if (f->pointer == f->buflen) {
+        memmove(f->ibuffer, f->ibuffer + f->buflen - f->length,
+                (size_t)f->length * sizeof(double));
+        memmove(f->qbuffer, f->qbuffer + f->buflen - f->length,
+                (size_t)f->length * sizeof(double));
+        f->pointer = f->length;
+    }
+    if (f->counter == f->decimateratio) {
+        f->counter = 0;
+        return 1;
+    }
+    return 0;
+}
+
 int fdsp_fir_irun(fdsp_fir *f, double in, double *out)
 {
     /* Irun, filters/filters.cxx:193-217: the dot product covers the length samples before

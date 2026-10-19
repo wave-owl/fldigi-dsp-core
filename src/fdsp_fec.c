@@ -25,9 +25,52 @@
 /* ---------------------------------------------------------------------------------- */
 /* viterbi, filters/viterbi.cxx:36-214                                                         */
 /* ---------------------------------------------------------------------------------- */
+/*
+ * Storage (0.9.0). fldigi keeps PATHMEM rows of path metrics and of predecessor states
+ * (2 x 256 x 2^(k-1) ints: 64 MB for K=16). Its results only need:
+ *
+ * - the path metrics of the previous step (the add-compare-select) and of the current one
+ *   (the best state of a traceback): two rows;
+ * - the decision of every state and step: the predecessor is s >> 1 or (s + nstates) >> 1,
+ *   one bit (fldigi's history[p][s] is p0 or p1);
+ * - the metric difference of a traceback, metrics[end][seq[end]] - metrics[start][seq[start]]
+ *   (viterbi.cxx:138-149). Along the traced path every step adds exactly one branch metric
+ *   met[output[s]] (viterbi.cxx:184-193), so the difference is the sum of the branch metrics
+ *   of the chunk's steps; the four met[] values of every step are kept for that. The
+ *   renormalisation shifts all of fldigi's rows by one constant and leaves the difference
+ *   unchanged.
+ *
+ * Rows not yet written since the last reset hold metric 0 and predecessor 0 in fldigi
+ * (memset in reset, viterbi.cxx:85-92); a traceback into them continues at state 0 and adds
+ * nothing. `filled` counts the written rows to reproduce that. Decisions, decoded bits and
+ * metric differences are identical to fldigi's (goldens K=5, 7, 13, 15, 16).
+ */
 
-#define VMET(v, p, s) ((v)->metrics[(size_t)(p) * (size_t)(v)->nstates + (size_t)(s)])
-#define VHIS(v, p, s) ((v)->history[(size_t)(p) * (size_t)(v)->nstates + (size_t)(s)])
+#define VROW(v, p) ((v)->metrics + (size_t)((p) & 1u) * (size_t)(v)->nstates)
+
+static int vhis_bit(const fdsp_viterbi *v, unsigned int p, int s)
+{
+    size_t i = (size_t)p * (size_t)v->nstates + (size_t)s;
+    return (int)((v->history[i >> 5] >> (i & 31u)) & 1u);
+}
+
+/* fldigi's history[p][s]: the predecessor of state s at step p (0 in unwritten rows). */
+static int vpred(const fdsp_viterbi *v, unsigned int p, int s)
+{
+    if (p >= v->filled)
+        return 0;
+    return vhis_bit(v, p, s) ? (s + v->nstates) >> 1 : s >> 1;
+}
+
+/* The branch metric of step p into state s (0 in unwritten rows). */
+static int vbranch(const fdsp_viterbi *v, unsigned int p, int s)
+{
+    int full;
+    if (p >= v->filled)
+        return 0;
+    full = vhis_bit(v, p, s) ? s + v->nstates : s;
+    return v->branch[4 * (size_t)p + (size_t)v->output[full]];
+}
 
 void fdsp_viterbi_free(fdsp_viterbi *v)
 {
@@ -37,6 +80,7 @@ void fdsp_viterbi_free(fdsp_viterbi *v)
     free(v->output);
     free(v->metrics);
     free(v->history);
+    free(v->branch);
     memset(v, 0, sizeof *v);
 }
 
@@ -44,7 +88,7 @@ int fdsp_viterbi_init(fdsp_viterbi *v, int k, int poly1, int poly2)
 {
     /* viterbi::viterbi + init, filters/viterbi.cxx:36-82 */
     int i;
-    size_t cells;
+    size_t bits;
     if (!v)
         return -1;
     memset(v, 0, sizeof *v);
@@ -55,11 +99,12 @@ int fdsp_viterbi_init(fdsp_viterbi *v, int k, int poly1, int poly2)
     v->k = k;
     v->poly1 = poly1;
     v->poly2 = poly2;
-    cells = (size_t)FDSP_VITERBI_PATHMEM * (size_t)v->nstates;
+    bits = (size_t)FDSP_VITERBI_PATHMEM * (size_t)v->nstates;
     v->output = (int *)malloc((size_t)v->outsize * sizeof(int));
-    v->metrics = (int *)calloc(cells, sizeof(int));
-    v->history = (int *)calloc(cells, sizeof(int));
-    if (!v->output || !v->metrics || !v->history) {
+    v->metrics = (int *)calloc(2 * (size_t)v->nstates, sizeof(int));
+    v->history = (uint32_t *)calloc((bits + 31) / 32, sizeof(uint32_t));
+    v->branch = (int *)calloc(4 * (size_t)FDSP_VITERBI_PATHMEM, sizeof(int));
+    if (!v->output || !v->metrics || !v->history || !v->branch) {
         fdsp_viterbi_free(v);
         return -1;
     }
@@ -80,10 +125,19 @@ int fdsp_viterbi_init(fdsp_viterbi *v, int k, int poly1, int poly2)
 void fdsp_viterbi_reset(fdsp_viterbi *v)
 {
     /* viterbi::reset, filters/viterbi.cxx:85-92 */
-    size_t cells = (size_t)FDSP_VITERBI_PATHMEM * (size_t)v->nstates;
-    memset(v->metrics, 0, cells * sizeof(int));
-    memset(v->history, 0, cells * sizeof(int));
+    size_t bits = (size_t)FDSP_VITERBI_PATHMEM * (size_t)v->nstates;
+    memset(v->metrics, 0, 2 * (size_t)v->nstates * sizeof(int));
+    memset(v->history, 0, (bits + 31) / 32 * sizeof(uint32_t));
+    memset(v->branch, 0, 4 * (size_t)FDSP_VITERBI_PATHMEM * sizeof(int));
+    v->filled = 0;
     v->ptr = 0;
+}
+
+size_t fdsp_viterbi_footprint(const fdsp_viterbi *v)
+{
+    size_t bits = (size_t)FDSP_VITERBI_PATHMEM * (size_t)v->nstates;
+    return (size_t)v->outsize * sizeof(int) + 2 * (size_t)v->nstates * sizeof(int)
+           + (bits + 31) / 32 * sizeof(uint32_t) + 4 * (size_t)FDSP_VITERBI_PATHMEM * sizeof(int);
 }
 
 int fdsp_viterbi_set_traceback(fdsp_viterbi *v, int trace)
@@ -107,46 +161,48 @@ int fdsp_viterbi_set_chunksize(fdsp_viterbi *v, int chunk)
 static int viterbi_traceback(fdsp_viterbi *v, int *metric)
 {
     /* viterbi::traceback, filters/viterbi.cxx:110-152 */
-    int bestmetric, beststate, i;
+    int bestmetric, beststate, i, sum = 0;
     unsigned int p, c = 0;
+    const int *row;
 
     p = (v->ptr - 1) % FDSP_VITERBI_PATHMEM;
+    row = VROW(v, p);
     bestmetric = INT_MIN;
     beststate = 0;
     for (i = 0; i < v->nstates; i++) {
-        if (VMET(v, p, i) > bestmetric) {
-            bestmetric = VMET(v, p, i);
+        if (row[i] > bestmetric) {
+            bestmetric = row[i];
             beststate = i;
         }
     }
     v->sequence[p] = beststate;
     for (i = 0; i < v->traceback_len; i++) {
         unsigned int prev = (p - 1) % FDSP_VITERBI_PATHMEM;
-        v->sequence[prev] = VHIS(v, p, v->sequence[p]);
+        v->sequence[prev] = vpred(v, p, v->sequence[p]);
         p = prev;
     }
-    if (metric)
-        *metric = VMET(v, p, v->sequence[p]);
     for (i = 0; i < v->chunksize; i++) {
         c = (c << 1) | (unsigned int)(v->sequence[p] & 1);
         p = (p + 1) % FDSP_VITERBI_PATHMEM;
+        /* metrics[p][seq[p]] - metrics[p - 1][seq[p - 1]] along the traced path */
+        sum += vbranch(v, p, v->sequence[p]);
     }
     if (metric)
-        *metric = VMET(v, p, v->sequence[p]) - *metric;
+        *metric = sum;
     return (int)c;
 }
 
 static void viterbi_renormalise(fdsp_viterbi *v, unsigned int currptr)
 {
-    /* filters/viterbi.cxx:201-211 */
-    size_t i, cells = (size_t)FDSP_VITERBI_PATHMEM * (size_t)v->nstates;
-    if (VMET(v, currptr, 0) > INT_MAX / 2) {
-        for (i = 0; i < cells; i++)
-            v->metrics[i] -= INT_MAX / 2;
+    /* filters/viterbi.cxx:201-211, on the current row (the previous one is not read again) */
+    int *row = VROW(v, currptr), i;
+    if (row[0] > INT_MAX / 2) {
+        for (i = 0; i < v->nstates; i++)
+            row[i] -= INT_MAX / 2;
     }
-    if (VMET(v, currptr, 0) < INT_MIN / 2) {
-        for (i = 0; i < cells; i++)
-            v->metrics[i] += INT_MIN / 2;
+    if (row[0] < INT_MIN / 2) {
+        for (i = 0; i < v->nstates; i++)
+            row[i] += INT_MIN / 2;
     }
 }
 
@@ -154,7 +210,10 @@ int fdsp_viterbi_decode(fdsp_viterbi *v, const unsigned char sym[2], int *metric
 {
     /* viterbi::decode, filters/viterbi.cxx:154-214 */
     unsigned int currptr, prevptr;
-    int met[4], n;
+    int met[4], n, *cur, *branch;
+    const int *prev;
+    uint32_t *his;
+    size_t base;
 
     currptr = v->ptr;
     prevptr = (currptr - 1) % FDSP_VITERBI_PATHMEM;
@@ -162,23 +221,33 @@ int fdsp_viterbi_decode(fdsp_viterbi *v, const unsigned char sym[2], int *metric
     met[1] = v->mettab[0][sym[1]] + v->mettab[1][sym[0]];
     met[2] = v->mettab[1][sym[1]] + v->mettab[0][sym[0]];
     met[3] = v->mettab[1][sym[1]] + v->mettab[1][sym[0]];
+    branch = v->branch + 4 * (size_t)currptr;
+    for (n = 0; n < 4; n++)
+        branch[n] = met[n];
 
+    cur = VROW(v, currptr);
+    prev = VROW(v, prevptr);
+    his = v->history;
+    base = (size_t)currptr * (size_t)v->nstates;
     for (n = 0; n < v->nstates; n++) {
         int p0, p1, s0, s1, m0, m1;
+        size_t bit = base + (size_t)n;
         s0 = n;
         s1 = n + v->nstates;
         p0 = s0 >> 1;
         p1 = s1 >> 1;
-        m0 = VMET(v, prevptr, p0) + met[v->output[s0]];
-        m1 = VMET(v, prevptr, p1) + met[v->output[s1]];
+        m0 = prev[p0] + met[v->output[s0]];
+        m1 = prev[p1] + met[v->output[s1]];
         if (m0 > m1) {
-            VMET(v, currptr, n) = m0;
-            VHIS(v, currptr, n) = p0;
+            cur[n] = m0;
+            his[bit >> 5] &= ~((uint32_t)1 << (bit & 31u));
         } else {
-            VMET(v, currptr, n) = m1;
-            VHIS(v, currptr, n) = p1;
+            cur[n] = m1;
+            his[bit >> 5] |= (uint32_t)1 << (bit & 31u);
         }
     }
+    if (v->filled < FDSP_VITERBI_PATHMEM)
+        v->filled++;
     v->ptr = (v->ptr + 1) % FDSP_VITERBI_PATHMEM;
     /* see the file comment: renormalised before a traceback as well */
     viterbi_renormalise(v, currptr);
