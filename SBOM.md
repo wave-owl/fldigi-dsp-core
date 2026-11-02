@@ -30,7 +30,7 @@ None.
 | src/fdsp_filters.c | e7c3ab3709ad62a7d91829364eb48a05fa325c0d | declared-vendored-source | unresolved; manual review required |
 | src/fdsp_fec.c | e7c3ab3709ad62a7d91829364eb48a05fa325c0d | declared-vendored-source | unresolved; manual review required |
 | actions/checkout | v4 | Syft source/package discovery | unresolved |
-| /Users/gerolfziegenhain/src/wave-owl/local/sbom-core-preflight-v2/fldigi-dsp-core/.source-input/.github/workflows/ci.yml | unresolved | Syft source/package discovery | unresolved |
+| tracked-source/.github/workflows/ci.yml | unresolved | Syft source/package discovery | unresolved |
 
 License evidence paths/hashes, source manifests, model hashes and conditional
 CMake declarations are recorded in SBOM.cdx.json. Declared upstream pins do not
