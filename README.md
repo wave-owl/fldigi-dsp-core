@@ -266,3 +266,12 @@ convolutional code, interleaver and MFSK varicode by Dave Freese W1HKJ and the f
 Dave Freese, LGPL-3.0-or-later in fldigi; LGPL-3.0 permits distributing it as part of this
 GPL-3.0-or-later library. The C port and the
 tests: Gerolf Ziegenhain DG6FL, 2026. See `CHANGELOG.md` for the version history.
+
+<!-- wave-owl-source-sbom-docs:start -->
+## Source SBOMs
+
+Every published release, including prereleases, receives automatically generated
+CycloneDX JSON and readable documentation. See the [initial source report](SBOM.md),
+[CycloneDX JSON](SBOM.cdx.json) and [release policy](SBOM-POLICY.md) for scope,
+release assets, provenance declarations and reproduction instructions.
+<!-- wave-owl-source-sbom-docs:end -->
